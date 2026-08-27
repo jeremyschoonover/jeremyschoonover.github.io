@@ -1,0 +1,373 @@
+/* ==========================================================================
+   Jeremy Schoonover — portfolio
+   Hand-written CSS. Mobile-first: base rules target small screens, and the
+   media queries near the bottom progressively enhance for wider viewports.
+
+   Contents
+     1.  Custom properties
+     2.  Reset and base elements
+     3.  Typography
+     4.  Layout containers
+     5.  Skip link
+     6.  Links and focus states
+     7.  Header
+     8.  Sections
+     9.  Projects
+     10. Skills
+     11. Contact
+     12. Footer
+     13. Responsive enhancements
+     14. Reduced motion
+   ========================================================================== */
+
+
+/* ==========================================================================
+   1. Custom properties
+   Palette is deliberately narrow: near-black text on white, one maroon accent
+   drawn from the Texas A&M palette, and two neutral greys. Every text and
+   background pair used below is documented with its measured contrast ratio.
+   ========================================================================== */
+
+:root {
+  /* Colour */
+  --bg:          #ffffff;
+  --bg-sunken:   #f6f5f3;  /* footer / recessed panels */
+  --ink:         #1f2124;  /* body text     — 16.1:1 on --bg */
+  --ink-muted:   #55595e;  /* metadata      —  7.1:1 on --bg */
+  --maroon:      #500000;  /* accent, links — 15.7:1 on --bg */
+  --rule:        #e2e0dc;  /* hairline borders (non-text) */
+
+  /* Typography — system stack, so there is no web font to download at all */
+  --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+               "Helvetica Neue", Arial, sans-serif;
+
+  /* Spacing */
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1.25rem;
+  --space-lg:  2rem;
+  --space-xl:  3.5rem;
+
+  /* Measure: caps line length for readability (~65-75 characters) */
+  --measure: 68ch;
+
+  color-scheme: light;
+}
+
+
+/* ==========================================================================
+   2. Reset and base elements
+   ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  /* Fluid body size: 17px at 320px wide, rising to 18px on large screens. */
+  font-size: clamp(1.0625rem, 1.0125rem + 0.25vw, 1.125rem);
+  line-height: 1.65;
+  /* A thin maroon rule across the top: accent, not theme. */
+  border-top: 4px solid var(--maroon);
+  /* Long tokens (an email address at 320px) wrap instead of forcing h-scroll. */
+  overflow-wrap: break-word;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+
+/* ==========================================================================
+   3. Typography
+   Heading levels are styled to reinforce the document outline: h1 is the page,
+   h2 labels a section, h3 labels an item within a section.
+   ========================================================================== */
+
+h1,
+h2,
+h3 {
+  line-height: 1.2;
+  margin: 0;
+  text-wrap: balance;
+}
+
+h1 {
+  font-size: clamp(2rem, 1.55rem + 2.25vw, 3rem);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* Section labels: small and letterspaced so hierarchy comes from treatment
+   rather than from size alone. */
+h2 {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--maroon);
+  margin-bottom: var(--space-md);
+}
+
+h3 {
+  font-size: 1.1875rem;
+  font-weight: 600;
+}
+
+p {
+  margin: 0 0 var(--space-md);
+  max-width: var(--measure);
+}
+
+p:last-child {
+  margin-bottom: 0;
+}
+
+
+/* ==========================================================================
+   4. Layout containers
+   ========================================================================== */
+
+.wrap {
+  width: 100%;
+  max-width: 48rem;
+  margin-inline: auto;
+  padding-inline: var(--space-md);
+}
+
+
+/* ==========================================================================
+   5. Skip link
+   Hidden until it receives keyboard focus, then pinned to the top-left.
+   ========================================================================== */
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10;
+  background-color: var(--maroon);
+  color: #ffffff;          /* 15.7:1 against --maroon */
+  padding: var(--space-sm) var(--space-md);
+  text-decoration: underline;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
+/* The <main> element takes focus via the skip link but is not a tab stop,
+   so it should not paint a focus ring of its own. */
+main:focus {
+  outline: none;
+}
+
+
+/* ==========================================================================
+   6. Links and focus states
+   Default outlines are replaced, never removed: every interactive element gets
+   a 3px maroon ring that clears the text by 2px.
+   ========================================================================== */
+
+a {
+  color: var(--maroon);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  text-decoration-thickness: 1px;
+}
+
+a:hover {
+  text-decoration-thickness: 2px;
+}
+
+:focus-visible {
+  outline: 3px solid var(--maroon);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+
+/* ==========================================================================
+   7. Header
+   ========================================================================== */
+
+/* No bottom padding of consequence: the first section supplies its own generous
+   top padding, and doubling them opened an 88px hole under the header. */
+.site-header {
+  padding-top: var(--space-xl);
+  padding-bottom: var(--space-xs);
+}
+
+.tagline {
+  font-size: 1.0625rem;
+  color: var(--ink-muted);
+  margin-top: var(--space-xs);
+  margin-bottom: var(--space-md);
+}
+
+/* Header and contact links share the same stacked, generously tapped layout.
+   min-height plus padding keeps every target comfortably past 44x44px. */
+.header-links,
+.contact-links,
+.project-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs) var(--space-lg);
+}
+
+.header-links a,
+.contact-links a,
+.project-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+
+/* ==========================================================================
+   8. Sections
+   A hairline above each section heading separates content without boxing it in.
+   ========================================================================== */
+
+main section {
+  padding-top: var(--space-xl);
+  padding-bottom: var(--space-xs);
+}
+
+main section + section {
+  border-top: 1px solid var(--rule);
+}
+
+
+/* ==========================================================================
+   9. Projects
+   ========================================================================== */
+
+.project + .project {
+  margin-top: var(--space-lg);
+}
+
+.project-meta {
+  font-size: 0.9375rem;
+  color: var(--ink-muted);
+  margin-top: var(--space-xs);
+  margin-bottom: var(--space-sm);
+}
+
+/* Channel links sit tight under their description; the gap is narrower than the
+   header row because these wrap to two lines on a phone. */
+.project-links {
+  margin-top: var(--space-xs);
+  gap: 0 var(--space-md);
+  font-size: 0.9375rem;
+}
+
+
+/* ==========================================================================
+   10. Skills
+   Auto-fitting grid: one column on phones, filling out to four on desktop
+   without a single hard-coded breakpoint.
+   ========================================================================== */
+
+/* 16rem minimum resolves to a single column on phones and a balanced 2x2 on
+   anything wider, which suits four groups better than a 3 + 1 orphan row. */
+.skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: var(--space-lg) var(--space-md);
+}
+
+.skill-group h3 {
+  font-size: 1rem;
+  padding-bottom: var(--space-xs);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: var(--space-xs);
+}
+
+.skill-group li {
+  color: var(--ink);
+  padding-block: 0.15rem;
+}
+
+
+/* ==========================================================================
+   11. Contact
+   ========================================================================== */
+
+.contact-links {
+  margin-top: var(--space-sm);
+}
+
+
+/* ==========================================================================
+   12. Footer
+   ========================================================================== */
+
+/* The footer link sits inline in a sentence, which WCAG 2.2 SC 2.5.8 exempts
+   from the target-size minimum. Padding it out to a 44px-tall hit area anyway
+   costs nothing and does not shift the text. */
+.site-footer a {
+  display: inline-block;
+  padding-block: 0.7rem;
+}
+
+.site-footer {
+  margin-top: var(--space-xl);
+  padding-top: var(--space-lg);
+  padding-bottom: var(--space-lg);
+  background-color: var(--bg-sunken);
+  border-top: 1px solid var(--rule);
+  font-size: 0.9375rem;
+  color: var(--ink-muted);
+}
+
+
+/* ==========================================================================
+   13. Responsive enhancements
+   ========================================================================== */
+
+/* Tablet and up: more air around the header. */
+@media (min-width: 40em) {
+  .site-header {
+    padding-top: 5rem;
+  }
+}
+
+/* Large screens: a little more gutter. Body copy stays capped by --measure so
+   lines never outrun a comfortable reading length. */
+@media (min-width: 64em) {
+  .wrap {
+    padding-inline: var(--space-lg);
+  }
+}
+
+
+/* ==========================================================================
+   14. Reduced motion
+   There is no animation on this page today; this guard keeps that promise if
+   any is ever added.
+   ========================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
