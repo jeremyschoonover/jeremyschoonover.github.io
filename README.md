@@ -7,7 +7,7 @@ Live at **https://jeremyschoonover.github.io**
 
 ## Approach
 
-Hand-written semantic HTML and CSS. No framework, no CSS library, no build
+Semantic HTML and CSS. No framework, no CSS library, no build
 step, and no JavaScript at all — the page has zero `<script>` tags, so it
 behaves identically with JavaScript disabled. Open `index.html` in an editor and
 what you see is what the browser receives.

@@ -1,7 +1,7 @@
 /* ==========================================================================
    Jeremy Schoonover — portfolio
-   Hand-written CSS. Mobile-first: base rules target small screens, and the
-   media queries near the bottom progressively enhance for wider viewports.
+   Mobile-first CSS: base rules target small screens, and the media queries near
+   the bottom progressively enhance for wider viewports.
 
    Contents
      1.  Custom properties
