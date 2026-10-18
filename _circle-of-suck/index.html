@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{TITLE}}</title>
+    <meta name="description" content="{{DESCRIPTION}}" />
+    <link rel="canonical" href="{{PAGE_URL}}" />
+    <meta property="og:site_name" content="{{SITE_NAME}}" />
+    <meta property="og:title" content="{{TITLE}}" />
+    <meta property="og:description" content="{{DESCRIPTION}}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="{{PAGE_URL}}" />
+    <meta property="og:image" content="{{PAGE_URL}}og.png?v={{VERSION}}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="{{ALT}}" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="theme-color" content="#FFFFFF" />
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+  </head>
+  <body>
+    <header class="mx-auto flex max-w-[560px] items-center justify-between px-4 pt-4 pb-3">
+      <a href="./" class="display text-[22px] tracking-wide">{{SITE_NAME}}</a>
+      <span class="label text-gray">{{LEAGUE}} &middot; {{SEASON}}</span>
+    </header>
+
+    <main class="mx-auto max-w-[560px] px-4">
+      <h1 class="sr-only">{{LEAGUE}} Circle of Suck, {{SEASON}} season, through Week {{WEEK}}</h1>
+      <img src="circle.png?v={{VERSION}}" alt="{{ALT}}" width="1080" height="1350" fetchpriority="high" class="block h-auto w-full border border-line" />
+      <div class="mt-3 grid grid-cols-2 gap-2">
+        <a class="btn" href="circle.png?v={{VERSION}}" download="{{FILE_NAME}}">Save image</a>
+        <button class="btn" type="button" data-share hidden>Share</button>
+      </div>
+
+      <section class="mt-14" aria-labelledby="better">
+        <h2 id="better" class="display text-[40px]">Who's better?</h2>
+        <form class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2" data-form hidden>
+          <select class="pick" name="from" aria-label="This team"></select>
+          <span class="display text-[28px]" aria-hidden="true">&gt;</span>
+          <select class="pick" name="to" aria-label="is better than this team"></select>
+        </form>
+        <div data-proof aria-live="polite"></div>
+        <noscript><p class="mt-4 text-[15px] text-gray">Turn on JavaScript to compare teams.</p></noscript>
+      </section>
+    </main>
+
+    <footer class="mx-auto mt-16 max-w-[560px] px-4 pb-10 text-[13px] leading-relaxed text-gray">
+      <div class="border-t border-line pt-5">
+        <details>
+          <summary class="label cursor-pointer text-ink">How it works</summary>
+          <p class="mt-2">A circle of suck is a loop of results where every team beat the next one and the last team beat the first, so every team in it can claim to be better than all the others. This is the longest loop in the {{LEAGUE}} this season. Only {{LEAGUE}} conference games count, and it's recalculated after every final.</p>
+          <p class="mt-2">Who's better? finds the shortest chain of wins from one team to another.</p>
+        </details>
+        <p class="mt-4">Last game {{LAST_GAME}}. {{SOURCE_LINE}} <a class="underline" href="{{ISSUES}}">Report a wrong score</a>.</p>
+        <p class="mt-2">Not affiliated with or endorsed by the Southeastern Conference or any of its member schools. Team names and logos are trademarks of their respective owners and are used only to identify the teams.</p>
+        <p class="mt-2">&copy; {{SEASON}} <a class="underline" href="{{AUTHOR_URL}}">{{AUTHOR}}</a> &middot; No cookies, no tracking.</p>
+      </div>
+    </footer>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

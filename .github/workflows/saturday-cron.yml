@@ -1,8 +1,8 @@
-name: SEC Circle of Suck - Saturday sync
+name: Circle of Suck - Saturday sync
 
 # Every 10 minutes on Saturdays (UTC), plus the early-Sunday UTC hours that cover West Coast
 # kickoffs: pull finals from CollegeFootballData.com, recompute the circle, re-render the post
-# image, rebuild the app into sec-parity-index/, and commit. The commit triggers the normal
+# image, rebuild the site into circle-of-suck/, and commit. The commit triggers the normal
 # GitHub Pages build for this site.
 on:
   schedule:
@@ -10,14 +10,14 @@ on:
     - cron: '*/10 0-8 * * 0'
   push:
     branches: [main]
-    paths: ['_sec-parity-index/**', '.github/workflows/saturday-cron.yml']
+    paths: ['_circle-of-suck/**', '.github/workflows/saturday-cron.yml']
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: sec-parity-sync
+  group: circle-of-suck-sync
   cancel-in-progress: false
 
 jobs:
@@ -25,14 +25,14 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: _sec-parity-index
+        working-directory: _circle-of-suck
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: _sec-parity-index/package-lock.json
+          cache-dependency-path: _circle-of-suck/package-lock.json
       - run: npm ci
       - name: Fetch finals and recompute cycle, SCC and shortest paths
         run: npm run sync
@@ -41,12 +41,12 @@ jobs:
       - name: Download team logos (first run only; kept afterwards)
         run: npm run logos
       - run: npm test
-      - name: Render the post image and build into sec-parity-index/
+      - name: Render the post image and build into circle-of-suck/
         run: npm run publish
       - name: Commit data and build
         working-directory: .
         run: |
-          git add _sec-parity-index/data _sec-parity-index/public sec-parity-index
+          git add _circle-of-suck/data _circle-of-suck/public circle-of-suck sec-parity-index
           if git diff --cached --quiet; then
             echo "No changes."
             exit 0

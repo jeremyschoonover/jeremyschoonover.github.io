@@ -1,14 +1,14 @@
 {
-  "name": "sec-circle-of-suck",
+  "name": "circle-of-suck",
   "version": "1.0.0",
-  "description": "The SEC Parity Index \u2014 2026 college football Circle of Parity",
+  "description": "Circle of Suck: the longest loop of upsets in a league, drawn as a social post and updated after every game",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && tsx scripts/render.ts && vite build",
     "preview": "vite preview",
     "test": "vitest run",
     "sync": "tsx scripts/sync.ts",
-    "publish": "npm run build && rm -rf ../sec-parity-index && cp -r dist ../sec-parity-index",
+    "publish": "npm run build && tsx scripts/publish.ts",
     "logos": "tsx scripts/logos.ts",
     "render": "tsx scripts/render.ts"
   },

@@ -1,18 +1,20 @@
 /**
- * Render the circle as a social post: public/circle.png (1080x1080, the page hero and the file people
- * save) and public/og.png (1200x630, the link preview). Runs before every build.
+ * Render the circle as a social post. Runs before every build and writes:
+ *   public/circle.png          1080x1350, the page image and the file people save and share
+ *   public/og.png              1200x630, the link preview
+ *   public/apple-touch-icon.png 180x180, the home-screen icon
  */
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { createCanvas, GlobalFonts, type Image, loadImage, type SKRSContext2D } from '@napi-rs/canvas';
 import { teamInfo } from '../src/data/teams';
-import { type Dataset, losePts, secGames, winPts } from '../src/lib/data';
-import { analyze, edgeKey } from '../src/lib/graph';
+import type { Dataset } from '../src/lib/data';
+import { info, LEAGUE, longDate, SITE } from '../src/site';
 
-const SITE = 'jeremyschoonover.github.io/sec-parity-index';
 const FONT = 'Barlow Condensed';
 const INK = '#111111';
 const GRAY = '#6B6B6B';
+const LIGHT = '#9A9A9A';
 
 const require = createRequire(import.meta.url);
 for (const w of [600, 700, 800]) {
@@ -20,16 +22,9 @@ for (const w of [600, 700, 800]) {
 }
 
 const data = JSON.parse(readFileSync(new URL('../data/games-2026.json', import.meta.url), 'utf8')) as Dataset;
-const a = analyze(secGames(data.games));
+const { a, week, lastGame, results, outside } = info(data);
 const ring = a.cycle;
 const n = ring.length;
-const week = Math.max(0, ...a.games.map((g) => g.week));
-const lastDate = new Date(`${a.games.map((g) => g.date).sort().at(-1)}T12:00:00Z`)
-  .toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
-const labels = ring.map((t, i) => {
-  const g = a.graph.edgeGames.get(edgeKey(t, ring[(i + 1) % n]))!.at(-1)!;
-  return `${winPts(g)}-${losePts(g)}`;
-});
 
 interface Logo { img: Image; sx: number; sy: number; sw: number; sh: number }
 
@@ -56,14 +51,15 @@ async function logo(team: string): Promise<Logo | null> {
   if (x1 < 0) return null;
   return { img, sx: x0, sy: y0, sw: x1 - x0 + 1, sh: y1 - y0 + 1 };
 }
-const logos = await Promise.all(ring.map(logo));
+const logos = new Map<string, Logo | null>();
+for (const t of a.teams) logos.set(t, await logo(t));
 
 /**
- * Drawn size of team i's mark for a nominal size `s`. Logos are scaled to equal visual area, so a
+ * Drawn size of a team's mark for a nominal size `s`. Logos are scaled to equal visual area, so a
  * wide wordmark and a tall letter read as the same weight, then capped so neither gets huge.
  */
-function markSize(i: number, s: number): { w: number; h: number } {
-  const l = logos[i];
+function markSize(team: string, s: number): { w: number; h: number } {
+  const l = logos.get(team);
   if (!l) return { w: s * 0.84, h: s * 0.84 };
   const k = Math.min((s * 0.76) / Math.sqrt(l.sw * l.sh), (s * 1.1) / l.sw, (s * 0.92) / l.sh);
   return { w: l.sw * k, h: l.sh * k };
@@ -79,14 +75,15 @@ function fit(ctx: SKRSContext2D, text: string, weight: number, max: number, widt
   return Math.min(max, Math.floor((max * width) / ctx.measureText(text).width));
 }
 
-function drawTeam(ctx: SKRSContext2D, i: number, x: number, y: number, s: number) {
-  const l = logos[i];
+function drawTeam(ctx: SKRSContext2D, team: string, x: number, y: number, s: number) {
+  const l = logos.get(team);
   if (l) {
-    const { w, h } = markSize(i, s);
+    const { w, h } = markSize(team, s);
     ctx.drawImage(l.img, l.sx, l.sy, l.sw, l.sh, x - w / 2, y - h / 2, w, h);
     return;
   }
-  const t = teamInfo(ring[i]);
+  // No logo on file: a flat school-color disc with the abbreviation.
+  const t = teamInfo(team);
   const r = s * 0.42;
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -107,9 +104,9 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
   const step = (2 * Math.PI) / n;
   const angle = (i: number) => -Math.PI / 2 + step * i;
   const s = Math.min(maxLogo, 2 * R * Math.sin(Math.PI / n) * 0.62);
-  // Angular room each mark takes up along the ring, so arrows stop short of wide logos too.
-  const half = ring.map((_, i) => {
-    const { w, h } = markSize(i, s);
+  // Room each mark takes up along the ring, so arrows stop short of wide logos too.
+  const half = ring.map((t, i) => {
+    const { w, h } = markSize(t, s);
     const a = angle(i);
     return (Math.abs(Math.sin(a)) * w + Math.abs(Math.cos(a)) * h) / 2;
   });
@@ -140,41 +137,72 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
     // Push each score outward far enough that its box clears the arrow, wider text going further.
     const mid = angle(i) + step / 2;
     font(ctx, 800, labelSize);
-    const tw = ctx.measureText(labels[i]).width / 2;
+    const tw = ctx.measureText(results[i].score).width / 2;
     const lr = R + 14 + Math.abs(Math.cos(mid)) * tw + Math.abs(Math.sin(mid)) * labelSize * 0.5;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(labels[i], cx + lr * Math.cos(mid), cy + lr * Math.sin(mid));
+    ctx.fillText(results[i].score, cx + lr * Math.cos(mid), cy + lr * Math.sin(mid));
   }
-  ring.forEach((_, i) => drawTeam(ctx, i, cx + R * Math.cos(angle(i)), cy + R * Math.sin(angle(i)), s));
+  ring.forEach((t, i) => drawTeam(ctx, t, cx + R * Math.cos(angle(i)), cy + R * Math.sin(angle(i)), s));
   return s;
+}
+
+/** Centered row(s) of the teams that didn't make the ring. */
+function drawOutside(ctx: SKRSContext2D, W: number, top: number) {
+  ctx.fillStyle = GRAY;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  font(ctx, 700, 28);
+  ctx.save();
+  ctx.letterSpacing = '3px';
+  ctx.fillText(outside.length ? 'NOT IN THE CIRCLE' : 'EVERY TEAM IS IN THE CIRCLE', W / 2, top);
+  ctx.restore();
+  if (!outside.length) return;
+  const perRow = Math.min(outside.length, 8);
+  const rows = Math.ceil(outside.length / perRow);
+  const s = Math.min(92, (W - 200) / perRow - 24);
+  const gap = s + 28;
+  outside.forEach((t, i) => {
+    const row = Math.floor(i / perRow);
+    const inRow = Math.min(perRow, outside.length - row * perRow);
+    const x = W / 2 + (i % perRow - (inRow - 1) / 2) * gap;
+    const y = top + 30 + s / 2 + row * (s + 16) + (rows > 1 ? 0 : 6);
+    drawTeam(ctx, t, x, y, s);
+  });
+}
+
+function watermark(ctx: SKRSContext2D, W: number, y: number) {
+  font(ctx, 600, 21);
+  ctx.fillStyle = LIGHT;
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${LEAGUE.season} · THROUGH WEEK ${week} · ${longDate(lastGame).toUpperCase()}`, 40, y);
+  ctx.textAlign = 'right';
+  ctx.fillText(SITE.display, W - 40, y);
 }
 
 function post(): Buffer {
   const W = 1080;
-  const c = createCanvas(W, W);
+  const H = 1350;
+  const c = createCanvas(W, H);
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, W, W);
-  const cy = 520;
+  ctx.fillRect(0, 0, W, H);
+  const cy = 528;
   const R = 366;
   const s = drawRing(ctx, W / 2, cy, R, 132, 40);
   const inner = 2 * (R - s / 2 - 24);
-
   ctx.fillStyle = INK;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  font(ctx, 800, fit(ctx, 'SEC', 800, 170, inner * 0.6));
-  ctx.fillText('SEC', W / 2, cy - 4);
+  font(ctx, 800, fit(ctx, LEAGUE.name, 800, 170, inner * 0.6));
+  ctx.fillText(LEAGUE.name, W / 2, cy - 4);
   font(ctx, 800, fit(ctx, 'CIRCLE OF SUCK', 800, 88, inner * 0.92));
   ctx.fillText('CIRCLE OF SUCK', W / 2, cy + 78);
-
-  font(ctx, 700, 26);
-  ctx.fillStyle = GRAY;
-  ctx.textAlign = 'left';
-  ctx.fillText(`2026 · THROUGH WEEK ${week} · ${lastDate.toUpperCase()}`, 40, W - 34);
-  ctx.textAlign = 'right';
-  ctx.fillText(SITE, W - 40, W - 34);
+  ctx.fillStyle = '#E5E5E5';
+  ctx.fillRect(80, 1036, W - 160, 2);
+  drawOutside(ctx, W, 1100);
+  watermark(ctx, W, H - 34);
   return c.toBuffer('image/png');
 }
 
@@ -190,22 +218,58 @@ function preview(): Buffer {
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
   font(ctx, 800, 150);
-  ctx.fillText('SEC', 64, 220);
+  ctx.fillText(LEAGUE.name, 64, 220);
   font(ctx, 800, 96);
   ctx.fillText('CIRCLE', 64, 320);
   ctx.fillText('OF SUCK', 64, 410);
   font(ctx, 700, 28);
   ctx.fillStyle = GRAY;
-  ctx.fillText(`2026 · THROUGH WEEK ${week}`, 64, 470);
-  font(ctx, 700, 22);
-  ctx.fillText(SITE, 64, H - 44);
+  ctx.fillText(`${LEAGUE.season} · THROUGH WEEK ${week}`, 64, 470);
+  font(ctx, 600, 21);
+  ctx.fillStyle = LIGHT;
+  ctx.fillText(SITE.display, 64, H - 44);
   return c.toBuffer('image/png');
 }
 
+/** Home-screen icon: a black ring running clockwise into an arrowhead, matching the favicon. */
+function icon(): Buffer {
+  const S = 180;
+  const R = 56;
+  const c = createCanvas(S, S);
+  const ctx = c.getContext('2d');
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, S, S);
+  const a0 = -Math.PI / 2 + 0.2;
+  const a1 = -Math.PI / 2 - 0.75 + 2 * Math.PI;
+  ctx.strokeStyle = INK;
+  ctx.lineWidth = 16;
+  ctx.beginPath();
+  ctx.arc(S / 2, S / 2, R, a0, a1);
+  ctx.stroke();
+  // Arrowhead continuing clockwise from a1.
+  const tip = a1 + 0.62;
+  const tx = -Math.sin(a1);
+  const ty = Math.cos(a1);
+  const nx = Math.cos(a1);
+  const ny = Math.sin(a1);
+  const bx = S / 2 + R * nx;
+  const by = S / 2 + R * ny;
+  ctx.fillStyle = INK;
+  ctx.beginPath();
+  ctx.moveTo(S / 2 + R * Math.cos(tip), S / 2 + R * Math.sin(tip));
+  ctx.lineTo(bx + nx * 22 - tx * 2, by + ny * 22 - ty * 2);
+  ctx.lineTo(bx - nx * 22 - tx * 2, by - ny * 22 - ty * 2);
+  ctx.closePath();
+  ctx.fill();
+  return c.toBuffer('image/png');
+}
+
+writeFileSync(new URL('../public/apple-touch-icon.png', import.meta.url), icon());
 if (!n) {
-  console.log('No circle yet; skipping render.');
+  console.log('No circle yet; skipping the post image.');
 } else {
   writeFileSync(new URL('../public/circle.png', import.meta.url), post());
   writeFileSync(new URL('../public/og.png', import.meta.url), preview());
-  console.log(`Rendered a ${n}-team circle with ${logos.filter(Boolean).length} logos.`);
+  const withLogos = a.teams.filter((t) => logos.get(t)).length;
+  console.log(`Rendered a ${n}-team circle (${outside.length} outside) with ${withLogos}/${a.teams.length} logos.`);
 }
