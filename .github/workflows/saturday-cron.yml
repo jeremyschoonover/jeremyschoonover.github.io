@@ -1,0 +1,55 @@
+name: SEC Parity Index - Saturday sync
+
+# Every 10 minutes on Saturdays (UTC), plus the early-Sunday UTC hours that cover West Coast
+# kickoffs: pull finals from CollegeFootballData.com, recompute the longest cycle, SCCs and
+# shortest transitive paths, rebuild the app into sec-parity-index/, and commit. The commit
+# triggers the normal GitHub Pages build for this site.
+on:
+  schedule:
+    - cron: '*/10 * * * 6'
+    - cron: '*/10 0-8 * * 0'
+  push:
+    branches: [main]
+    paths: ['_sec-parity-index/**', '.github/workflows/saturday-cron.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: sec-parity-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: _sec-parity-index
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: _sec-parity-index/package-lock.json
+      - run: npm ci
+      - name: Fetch finals and recompute cycle, SCC and shortest paths
+        run: npm run sync
+        env:
+          CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      - run: npm test
+      - name: Build into sec-parity-index/
+        run: npm run publish
+      - name: Commit data and build
+        working-directory: .
+        run: |
+          git add _sec-parity-index/data sec-parity-index
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "SEC Parity Index: sync $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push

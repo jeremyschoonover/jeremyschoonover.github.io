@@ -1,0 +1,24 @@
+{
+  "name": "sec-parity-index",
+  "version": "1.0.0",
+  "description": "The SEC Parity Index — 2026 college football Circle of Parity",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "sync": "tsx scripts/sync.ts",
+    "publish": "npm run build && rm -rf ../sec-parity-index && cp -r dist ../sec-parity-index"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/node": "^22.20.5",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.7",
+    "vitest": "^3.2.7"
+  },
+  "private": true,
+  "type": "module"
+}
