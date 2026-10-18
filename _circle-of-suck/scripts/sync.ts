@@ -16,7 +16,9 @@ const API = `https://api.collegefootballdata.com/games?year=${YEAR}&seasonType=r
 
 async function fetchGames(key: string): Promise<Game[]> {
   const res = await fetch(API, { headers: { Authorization: `Bearer ${key}`, Accept: 'application/json' } });
-  if (!res.ok) throw new Error(`CFBD ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 200)}`);
+  if (!res.ok) {
+    throw Object.assign(new Error(`CFBD ${res.status} ${res.statusText}: ${(await res.text()).slice(0, 200)}`), { status: res.status });
+  }
   const raw = (await res.json()) as Record<string, unknown>[];
   return sortGames(secGames(raw.map(normalizeCfbdGame).filter((g): g is Game => g !== null)));
 }
@@ -41,6 +43,9 @@ async function main() {
     } catch (e) {
       // Over quota, a 5xx, a network blip: keep what's on file so the rest of the job still publishes.
       console.log(`::warning::CFBD fetch failed (${(e as Error).message}); keeping the existing results.`);
+      // A rejected or over-quota key won't fix itself, so fail this step (after the analysis below);
+      // the workflow still publishes, then turns the run red so the owner hears about it.
+      if ([401, 403, 429].includes((e as { status?: number }).status ?? 0)) process.exitCode = 1;
     }
     if (!games) {
       // Nothing new; fall through to recompute from what's on file.

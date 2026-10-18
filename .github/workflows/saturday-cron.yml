@@ -37,7 +37,11 @@ jobs:
           cache: npm
           cache-dependency-path: _circle-of-suck/package-lock.json
       - run: npm ci
-      - name: Fetch finals and recompute cycle, SCC and shortest paths
+      - name: Fetch finals and recompute the circle
+        id: sync
+        # A bad or over-quota key fails this step, but the site still rebuilds from the results on
+        # file; the last step then marks the run failed so it shows up in notifications.
+        continue-on-error: true
         run: npm run sync
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
@@ -60,3 +64,9 @@ jobs:
           # main may have moved since checkout (a human push, or a run queued behind this one).
           git pull --rebase origin main
           git push
+      - name: Flag a failed sync
+        if: steps.sync.outcome == 'failure'
+        working-directory: .
+        run: |
+          echo "::error::The CFBD sync failed (key rejected, over quota, or a script error). The site was rebuilt from the results on file."
+          exit 1

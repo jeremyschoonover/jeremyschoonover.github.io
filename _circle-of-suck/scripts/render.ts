@@ -98,11 +98,13 @@ function drawTeam(ctx: SKRSContext2D, team: string, x: number, y: number, s: num
   ctx.fillText(t.abbr, x, y + 2);
 }
 
+interface Box { x0: number; x1: number; y0: number; y1: number }
+
 /**
  * Logos around a circle, clockwise, with a curved arrow and score from each winner to its victim.
- * `start` is the canvas angle of ring[0] (default 12 o'clock).
+ * `start` is the canvas angle of ring[0] (default 12 o'clock); scores also stay clear of `avoid`.
  */
-function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo: number, labelSize: number, start = -Math.PI / 2) {
+function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo: number, labelSize: number, start = -Math.PI / 2, avoid: Box[] = []) {
   const step = (2 * Math.PI) / n;
   const angle = (i: number) => start + step * i;
   let s = Math.min(maxLogo, 2 * R * Math.sin(Math.PI / n) * 0.62);
@@ -156,11 +158,19 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
       const y = cy + R * Math.sin(angle(j));
       return { x0: x - w / 2 - 8, x1: x + w / 2 + 8, y0: y - h / 2 - 8, y1: y + h / 2 + 8 };
     });
-    let lr = R + 14 + Math.abs(Math.cos(mid)) * tw + Math.abs(Math.sin(mid)) * th;
-    for (let k = 0; k < 40; k++, lr += 3) {
-      const x = cx + lr * Math.cos(mid);
-      const y = cy + lr * Math.sin(mid);
-      if (!boxes.some((b) => x + tw > b.x0 && x - tw < b.x1 && y + th > b.y0 && y - th < b.y1)) break;
+    boxes.push(...avoid);
+    const hit = (r: number) => {
+      const x = cx + r * Math.cos(mid);
+      const y = cy + r * Math.sin(mid);
+      return boxes.some((b) => x + tw > b.x0 && x - tw < b.x1 && y + th > b.y0 && y - th < b.y1);
+    };
+    const ext = Math.abs(Math.cos(mid)) * tw + Math.abs(Math.sin(mid)) * th;
+    let lr = R + 14 + ext;
+    for (let k = 0; k < 40 && hit(lr); k++) lr += 3;
+    // Still blocked outside (by the branch's drop line): tuck the score inside the circle instead.
+    if (hit(lr)) {
+      lr = R - 14 - ext;
+      for (let k = 0; k < 20 && hit(lr); k++) lr -= 3;
     }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -300,7 +310,11 @@ function post(): Buffer {
   const cy = branch ? 544 : rest.length ? 560 : 610;
   const R = branch ? 360 : 380;
   const start = ringStart();
-  const s = drawRing(ctx, cx, cy, R, 132, 40, start);
+  // Where the branch leaves the circle; ring scores keep clear of its drop line.
+  const ax = cx + R * Math.cos(ANCHOR_ANGLE);
+  const ay = cy + R * Math.sin(ANCHOR_ANGLE);
+  const BRANCH_ROW = 1150;
+  const s = drawRing(ctx, cx, cy, R, 132, 40, start, branch ? [{ x0: ax - 6, x1: ax + 6, y0: ay, y1: BRANCH_ROW }] : []);
   const inner = 2 * (R - s / 2 - 24);
   ctx.fillStyle = INK;
   ctx.textAlign = 'center';
@@ -310,7 +324,7 @@ function post(): Buffer {
   font(ctx, 800, fit(ctx, 'CIRCLE OF SUCK', 800, 88, inner * 0.92));
   ctx.fillText('CIRCLE OF SUCK', cx, cy + 78);
 
-  if (branch) drawBranch(ctx, W, cx + R * Math.cos(ANCHOR_ANGLE), cy + R * Math.sin(ANCHOR_ANGLE), s, 1150);
+  if (branch) drawBranch(ctx, W, ax, ay, s, BRANCH_ROW);
   if (rest.length) drawRest(ctx, W, branch ? 1250 : 1200);
   watermark(ctx, W, H - 34);
   return c.toBuffer('image/png');

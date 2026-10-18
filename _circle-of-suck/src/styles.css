@@ -47,6 +47,12 @@ a:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visib
   select.pick { font-size: 16px; padding: 0 1.75rem 0 0.5rem; background-position: calc(100% - 8px) 50%; }
 }
 
+/* Below 360px two pickers can't fit "Mississippi State" side by side at a readable size; stack them. */
+@media (max-width: 359px) {
+  [data-form] { grid-template-columns: 1fr; }
+  [data-form] > span { justify-self: center; }
+}
+
 /* High-contrast modes drop background images, which would hide the custom arrow. */
 @media (forced-colors: active) {
   select.pick { appearance: auto; background-image: none; padding-right: 0.5rem; }
