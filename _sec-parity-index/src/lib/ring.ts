@@ -5,7 +5,7 @@ export interface RingLayout { r: number; nodes: RingNode[]; arrows: RingArrow[];
 /** Clockwise ring starting at 12 o'clock; arrows run from each team to the next (winner -> loser). */
 export function ringLayout(n: number, cx: number, cy: number, R: number): RingLayout {
   const chord = n > 1 ? 2 * R * Math.sin(Math.PI / n) : R;
-  const r = Math.max(7, Math.min(R * 0.12, chord * 0.3));
+  const r = Math.max(7, Math.min(R * 0.135, chord * 0.3));
   const nodes = Array.from({ length: n }, (_, i) => {
     const a = -Math.PI / 2 + (2 * Math.PI * i) / n;
     return { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) };

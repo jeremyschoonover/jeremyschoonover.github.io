@@ -111,29 +111,35 @@ export interface SearchBudget {
 }
 
 export interface CycleResult {
+  /** One longest cycle (the first found), or [] if the graph is acyclic. */
   cycle: string[];
+  /** Every distinct longest cycle found, up to `maxCycles`. */
+  cycles: string[][];
   /** False when the search budget ran out before every candidate was ruled out. */
   exhaustive: boolean;
 }
 
 /**
- * Longest simple cycle in the beat graph (NP-hard in general). Searches each strongly connected
+ * Longest simple cycles in the beat graph (NP-hard in general). Searches each strongly connected
  * component with a branch-and-bound DFS that only extends a cycle through vertices ordered after its
- * start, so every cycle is enumerated once. `maxSteps` caps the work for huge graphs (All FBS).
+ * start, so every cycle is enumerated once. Ties are kept so callers can choose among equally long rings.
  */
-export function longestCycle(g: WinGraph, opts: SearchBudget = {}): CycleResult {
+export function longestCycle(g: WinGraph, opts: SearchBudget & { maxCycles?: number } = {}): CycleResult {
   let maxSteps = opts.maxSteps ?? 5_000_000;
+  const maxCycles = opts.maxCycles ?? 50;
   const deadline = opts.maxMs ? Date.now() + opts.maxMs : Infinity;
   let steps = 0;
-  let best: string[] = [];
+  let best: string[][] = [];
+  let bestLen = 0;
   let exhaustive = true;
+  const out = () => steps > maxSteps;
 
   for (const comp of stronglyConnected(g)) {
-    if (comp.length < 2 || comp.length <= best.length) continue;
+    if (comp.length < 2 || comp.length < bestLen) continue;
     const order = new Map(comp.map((t, i) => [t, i]));
     const nbrs = new Map(comp.map((t) => [t, (g.adj.get(t) ?? []).filter((x) => order.has(x))]));
 
-    for (let s = 0; s < comp.length && comp.length - s > best.length; s++) {
+    for (let s = 0; s < comp.length && comp.length - s >= Math.max(2, bestLen); s++) {
       const start = comp[s];
       const path = [start];
       const visited = new Set([start]);
@@ -156,11 +162,12 @@ export function longestCycle(g: WinGraph, opts: SearchBudget = {}): CycleResult 
           exhaustive = false;
           return;
         }
-        if (path.length + reachable(v) <= best.length) return;
+        if (path.length + reachable(v) < bestLen) return;
         for (const w of nbrs.get(v)!) {
-          if (steps > maxSteps || best.length === comp.length) return;
+          if (out() || (bestLen === comp.length && best.length >= maxCycles)) return;
           if (w === start) {
-            if (path.length > best.length) best = [...path];
+            if (path.length > bestLen) { bestLen = path.length; best = [[...path]]; }
+            else if (path.length === bestLen && best.length < maxCycles) best.push([...path]);
             continue;
           }
           if (order.get(w)! < s || visited.has(w)) continue;
@@ -170,11 +177,11 @@ export function longestCycle(g: WinGraph, opts: SearchBudget = {}): CycleResult 
         }
       };
       dfs(start);
-      if (steps > maxSteps) break;
+      if (out()) break;
     }
-    if (steps > maxSteps) break;
+    if (out()) break;
   }
-  return { cycle: best, exhaustive };
+  return { cycle: best[0] ?? [], cycles: best, exhaustive };
 }
 
 /** Rotate a cycle so it starts at the team that sorts first by `compare`. */
@@ -229,18 +236,34 @@ export interface Analysis {
   graph: WinGraph;
   records: Map<string, TeamRecord>;
   standings: TeamRecord[];
+  /** The featured ring: of all longest cycles, the one with the smallest total margin of victory. */
   cycle: string[];
+  /** Every longest cycle, featured ring first, each rotated to start at its best team. */
+  rings: string[][];
   cycleExhaustive: boolean;
   sccs: string[][];
   /** Largest strongly connected component (the "circle of parity" pool). */
   scc: string[];
 }
 
+/** Total margin of victory around a ring; smaller means a tighter, more "parity" ring. */
+export function ringMargin(g: WinGraph, ring: string[]): number {
+  return ring.reduce((sum, t, i) => {
+    const games = g.edgeGames.get(edgeKey(t, ring[(i + 1) % ring.length])) ?? [];
+    return sum + Math.min(...games.map((x) => winPts(x) - losePts(x)));
+  }, 0);
+}
+
 export function analyze(games: Game[], teams: string[] = [], opts: SearchBudget = {}): Analysis {
   const graph = buildGraph(games, teams);
   const recs = records(games, graph.teams);
   const cmp = (a: string, b: string) => compareRecords(recs.get(a)!, recs.get(b)!);
-  const { cycle, exhaustive } = longestCycle(graph, opts);
+  const { cycles, exhaustive } = longestCycle(graph, opts);
+  const rings = cycles
+    .map((c) => rotateCycle(c, cmp))
+    .map((c) => ({ c, m: ringMargin(graph, c), k: c.join('>') }))
+    .sort((x, y) => x.m - y.m || x.k.localeCompare(y.k))
+    .map((x) => x.c);
   const sccs = stronglyConnected(graph);
   return {
     teams: graph.teams,
@@ -248,7 +271,8 @@ export function analyze(games: Game[], teams: string[] = [], opts: SearchBudget 
     graph,
     records: recs,
     standings: [...recs.values()].sort(compareRecords),
-    cycle: rotateCycle(cycle, cmp),
+    cycle: rings[0] ?? [],
+    rings,
     cycleExhaustive: exhaustive,
     sccs,
     scc: sccs[0]?.length > 1 ? sccs[0] : [],

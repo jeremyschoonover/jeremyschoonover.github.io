@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { easternDate, gamesFor, normalizeCfbdGame } from '../src/lib/data';
+import { easternDate, normalizeCfbdGame, secGames } from '../src/lib/data';
 
 describe('CFBD normalizer', () => {
   it('reads v2 camelCase records', () => {
@@ -29,13 +29,17 @@ describe('CFBD normalizer', () => {
     expect(easternDate('2026-10-18T02:30:00.000Z')).toBe('2026-10-17');
   });
 
-  it('scopes conference views to league games', () => {
+  it('flags overtime from the line scores', () => {
+    const g = normalizeCfbdGame({ homeTeam: 'A', awayTeam: 'B', homePoints: 35, awayPoints: 34, completed: true, homeLineScores: [7, 7, 7, 7, 7] });
+    expect(g?.ot).toBe(true);
+  });
+
+  it('keeps only SEC-vs-SEC games', () => {
     const base = { id: '1', week: 1, date: '2026-09-05', homePoints: 1, awayPoints: 0, neutral: false, conferenceGame: false };
     const games = [
       { ...base, home: 'A', away: 'B', homeConf: 'SEC', awayConf: 'SEC' },
       { ...base, home: 'A', away: 'C', homeConf: 'SEC', awayConf: 'ACC' },
     ];
-    expect(gamesFor(games, 'SEC')).toHaveLength(1);
-    expect(gamesFor(games, 'FBS')).toHaveLength(2);
+    expect(secGames(games)).toHaveLength(1);
   });
 });

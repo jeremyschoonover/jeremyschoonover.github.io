@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import seed from '../data/games-2026.json';
-import { type Dataset, type Game, gamesFor } from '../src/lib/data';
+import { type Dataset, type Game, secGames } from '../src/lib/data';
 import { allDistances, analyze, buildGraph, longestCycle, shortestPath, stronglyConnected } from '../src/lib/graph';
 import { teamInfo } from '../src/data/teams';
 
@@ -10,20 +10,21 @@ const abbr = (ids: string[]) => ids.map((t) => teamInfo(t).abbr);
 let n = 0;
 const game = (winner: string, loser: string, week = 1): Game => ({
   id: `t${n++}`, week, date: '2026-09-05', home: winner, away: loser, homePoints: 21, awayPoints: 14,
-  neutral: false, homeConf: 'X', awayConf: 'X', conferenceGame: true,
+  neutral: false, homeConf: 'SEC', awayConf: 'SEC', conferenceGame: true,
 });
 
-describe('seed dataset', () => {
-  it('holds 31 completed SEC games through Week 7 (Oct 17, 2026)', () => {
-    const sec = gamesFor(data.games, 'SEC');
-    expect(sec).toHaveLength(31);
-    expect(Math.max(...sec.map((g) => g.week))).toBe(7);
-    expect(sec.every((g) => g.date <= '2026-10-17' && g.homePoints !== g.awayPoints)).toBe(true);
+describe('bundled 2026 SEC results', () => {
+  const games = secGames(data.games);
+
+  it('holds every SEC conference final through Week 7 (Oct 17, 2026)', () => {
+    expect(games).toHaveLength(33);
+    expect(Math.max(...games.map((g) => g.week))).toBe(7);
+    expect(games.every((g) => g.date <= '2026-10-17' && g.homePoints !== g.awayPoints)).toBe(true);
   });
 
-  it('never schedules a team twice in one week', () => {
+  it('never has a team playing twice in one week', () => {
     const seen = new Set<string>();
-    for (const g of data.games) {
+    for (const g of games) {
       for (const t of [g.home, g.away]) {
         const k = `${t}@${g.week}`;
         expect(seen.has(k), k).toBe(false);
@@ -31,37 +32,46 @@ describe('seed dataset', () => {
       }
     }
   });
+
+  it('only uses teams with color metadata', () => {
+    for (const g of games) for (const t of [g.home, g.away]) expect(teamInfo(t).color).not.toBe('#E7E3D9');
+  });
 });
 
 describe('SEC parity analysis', () => {
-  const a = analyze(gamesFor(data.games, 'SEC'));
+  const a = analyze(secGames(data.games));
 
-  it('finds the 11-team ring starting from Georgia', () => {
+  it('features the tightest 11-team ring, starting from the best record', () => {
     expect(abbr(a.cycle)).toEqual(['UGA', 'OU', 'TEX', 'TENN', 'BAMA', 'UK', 'LSU', 'MSU', 'SC', 'UF', 'AUB']);
     expect(a.cycleExhaustive).toBe(true);
   });
 
-  it('every arrow in the ring is a real result', () => {
-    a.cycle.forEach((t, i) => {
-      expect(a.graph.adj.get(t)).toContain(a.cycle[(i + 1) % a.cycle.length]);
-    });
+  it('also finds the second 11-team ring through Missouri', () => {
+    expect(a.rings).toHaveLength(2);
+    expect(abbr(a.rings[1])).toEqual(['UGA', 'OU', 'TEX', 'TENN', 'BAMA', 'UK', 'LSU', 'MSU', 'MIZ', 'UF', 'AUB']);
   });
 
-  it('has a 13-team strongly connected component', () => {
-    expect(a.scc).toHaveLength(13);
+  it('every arrow in every ring is a real result', () => {
+    for (const r of a.rings) r.forEach((t, i) => expect(a.graph.adj.get(t)).toContain(r[(i + 1) % r.length]));
+  });
+
+  it('has a 13-team strongly connected core', () => {
     expect(abbr(a.scc).sort()).toEqual(
       ['UGA', 'OU', 'TEX', 'TENN', 'BAMA', 'UK', 'LSU', 'MSU', 'SC', 'UF', 'AUB', 'MIZ', 'MISS'].sort(),
     );
-  });
-
-  it('proves Auburn > Oklahoma through Georgia, and that nobody in the SCC is out of reach', () => {
-    expect(shortestPath(a.graph, 'Auburn', 'Oklahoma')).toEqual(['Auburn', 'Georgia', 'Oklahoma']);
     const d = allDistances(a.graph);
     for (const x of a.scc) for (const y of a.scc) if (x !== y) expect(d.get(x)!.has(y)).toBe(true);
   });
 
-  it('has no chain from winless Arkansas to anyone', () => {
-    expect(shortestPath(a.graph, 'Arkansas', 'Georgia')).toBeNull();
+  it('proves Oklahoma > Georgia despite losing to them', () => {
+    const p = shortestPath(a.graph, 'Oklahoma', 'Georgia')!;
+    expect(p[0]).toBe('Oklahoma');
+    expect(p[p.length - 1]).toBe('Georgia');
+    p.slice(0, -1).forEach((t, i) => expect(a.graph.adj.get(t)).toContain(p[i + 1]));
+  });
+
+  it('has no chain from Texas A&M back into the core', () => {
+    expect(shortestPath(a.graph, 'Texas A&M', 'Georgia')).toBeNull();
   });
 });
 
@@ -77,6 +87,12 @@ describe('graph primitives', () => {
     expect(longestCycle(g).cycle).toHaveLength(5);
   });
 
+  it('collects ties', () => {
+    // A>B>C>A and A>D>C... two 3-cycles through A and C.
+    const g = buildGraph([game('A', 'B'), game('B', 'C'), game('C', 'A'), game('A', 'D'), game('D', 'C')]);
+    expect(longestCycle(g).cycles).toHaveLength(2);
+  });
+
   it('returns an empty cycle for an acyclic graph', () => {
     expect(longestCycle(buildGraph([game('A', 'B'), game('B', 'C')])).cycle).toEqual([]);
   });
@@ -86,7 +102,7 @@ describe('graph primitives', () => {
   });
 
   it('reports a non-exhaustive search when the budget runs out', () => {
-    const r = longestCycle(buildGraph(gamesFor(data.games, 'SEC')), { maxSteps: 20 });
+    const r = longestCycle(buildGraph(secGames(data.games)), { maxSteps: 20 });
     expect(r.exhaustive).toBe(false);
     expect(r.cycle.length).toBeLessThanOrEqual(11);
   });

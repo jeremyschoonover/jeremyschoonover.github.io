@@ -1,245 +1,203 @@
 import './styles.css';
 import dataset from '../data/games-2026.json';
-import precomputed from '../data/analysis-2026.json';
-import { CONFERENCES, type ConferenceId, teamInfo } from './data/teams';
-import { type Dataset, gamesFor, losePts, winPts } from './lib/data';
-import { type Analysis, analyze, compareRecords, edgeKey, rotateCycle } from './lib/graph';
-import { downloadCard, type CardSize, type CardMeta } from './lib/card';
+import { teamInfo } from './data/teams';
+import { type Dataset, losePts, secGames, winPts } from './lib/data';
+import { analyze } from './lib/graph';
+import { downloadCard, type CardMeta, type CardSize, type ProofCard, type RingCard } from './lib/card';
 import { esc } from './lib/ui';
-import { type Ctx, type View, edgeGame } from './views/shared';
-import { renderDiagram } from './views/diagram';
-import { proofPath, renderProof } from './views/proof';
+import { type Ctx, type State, type View, edgeGame } from './views/shared';
+import { renderRing } from './views/ring';
+import { proofPair, proofPath, renderProof } from './views/proof';
 import { renderGrid } from './views/grid';
-import { renderLog } from './views/log';
+import { renderScores } from './views/scores';
 
 const data = dataset as Dataset;
-type Pre = { games: number; cycle: string[]; cycleExhaustive: boolean };
-const pre = (precomputed as { source: string; dataUpdatedAt: string; conferences: Record<string, Pre> });
+const a = analyze(secGames(data.games));
+const maxWeek = Math.max(0, ...a.games.map((g) => g.week));
 
-const VIEWS: { id: View; label: string; num: string }[] = [
-  { id: 'diagram', label: 'Parity Diagram', num: 'I' },
-  { id: 'proof', label: 'Head-to-Head Proof', num: 'II' },
-  { id: 'grid', label: 'The Grid', num: 'III' },
-  { id: 'log', label: 'Box Score Log', num: 'IV' },
+const VIEWS: { id: View; label: string }[] = [
+  { id: 'ring', label: 'The Circle' },
+  { id: 'proof', label: 'Head to Head' },
+  { id: 'grid', label: 'The Grid' },
+  { id: 'scores', label: 'Scores' },
 ];
+/** Older links used these view names. */
+const VIEW_ALIASES: Record<string, View> = { diagram: 'ring', log: 'scores' };
 
-const cache = new Map<ConferenceId, Analysis>();
-function analysisFor(conf: ConferenceId): Analysis {
-  if (cache.has(conf)) return cache.get(conf)!;
-  const games = gamesFor(data.games, conf);
-  const p = pre.conferences[conf];
-  const usePre = p && pre.dataUpdatedAt === data.updatedAt && p.games === games.length && p.cycle.length > 0;
-  // The build-time analysis already ran the long search; in the browser only a short one is needed.
-  const a = analyze(games, [], usePre ? { maxSteps: 0 } : { maxMs: 1500 });
-  if (usePre && p.cycle.every((t, i) => a.graph.edgeGames.has(edgeKey(t, p.cycle[(i + 1) % p.cycle.length])))) {
-    const cmp = (x: string, y: string) => compareRecords(a.records.get(x)!, a.records.get(y)!);
-    a.cycle = rotateCycle(p.cycle, cmp);
-    a.cycleExhaustive = p.cycleExhaustive;
-  } else if (usePre) {
-    Object.assign(a, analyze(games, [], { maxMs: 1500 }));
-  }
-  cache.set(conf, a);
-  return a;
-}
-
-interface State { conf: ConferenceId; view: View; from: string | null; to: string | null }
-
-function resolveTeam(q: string | null, a: Analysis): string | null {
+function resolveTeam(q: string | null): string | null {
   if (!q) return null;
   const s = q.trim().toLowerCase();
+  const squash = (x: string) => x.toLowerCase().replace(/[^a-z0-9]/g, '');
   return a.teams.find((t) => t.toLowerCase() === s)
     ?? a.teams.find((t) => teamInfo(t).abbr.toLowerCase() === s)
-    ?? a.teams.find((t) => t.toLowerCase().replace(/[^a-z0-9]/g, '') === s.replace(/[^a-z0-9]/g, ''))
+    ?? a.teams.find((t) => squash(t) === squash(s))
     ?? null;
 }
 
 function readState(): State {
   const p = new URLSearchParams(location.search);
-  const c = (p.get('conf') ?? 'SEC').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const conf = CONFERENCES.find((x) => x.id.toLowerCase().replace(/[^a-z0-9]/g, '') === c || (c === 'allfbs' && x.id === 'FBS'))?.id ?? 'SEC';
-  const a = analysisFor(conf);
-  const from = resolveTeam(p.get('from'), a);
-  const to = resolveTeam(p.get('to'), a);
-  const v = p.get('view') as View | null;
-  const view = VIEWS.some((x) => x.id === v) ? v! : from || to ? 'proof' : 'diagram';
-  return { conf, view, from, to };
+  const from = resolveTeam(p.get('from'));
+  const to = resolveTeam(p.get('to'));
+  const raw = p.get('view') ?? '';
+  const v = VIEW_ALIASES[raw] ?? raw;
+  const view = VIEWS.some((x) => x.id === v) ? (v as View) : from || to ? 'proof' : 'ring';
+  const ring = Math.min(Math.max(0, Number(p.get('ring') ?? 1) - 1 || 0), Math.max(0, a.rings.length - 1));
+  return { view, from, to, ring };
 }
 
 function href(s: State, patch: Partial<State>): string {
   const n = { ...s, ...patch };
   const p = new URLSearchParams();
-  if (n.conf !== 'SEC') p.set('conf', n.conf === 'FBS' ? 'FBS' : n.conf);
-  if (n.view !== 'diagram' && !(n.view === 'proof' && (n.from || n.to))) p.set('view', n.view);
+  if (n.view !== 'ring' && !(n.view === 'proof' && (n.from || n.to))) p.set('view', n.view);
   if (n.view === 'proof') {
     if (n.from) p.set('from', teamInfo(n.from).abbr);
     if (n.to) p.set('to', teamInfo(n.to).abbr);
   }
+  if (n.ring > 0) p.set('ring', String(n.ring + 1));
   const q = p.toString();
   return q ? `?${q}` : location.pathname;
 }
 
-function meta(): CardMeta {
-  const maxWeek = Math.max(0, ...data.games.map((g) => g.week));
-  const site = (location.host + location.pathname).replace(/index\.html$/, '').replace(/\/$/, '');
-  return {
-    edition: `2026 Season · Week ${maxWeek} Edition`,
-    site,
-    source: data.source === 'seed'
-      ? 'Seed results through Wk 7 · Oct 17, 2026'
-      : `Data: CollegeFootballData.com · ${new Date(data.updatedAt).toISOString().slice(0, 10)}`,
-  };
-}
+const updated = new Date(data.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+const meta: CardMeta = {
+  edition: `Through Week ${maxWeek}`,
+  site: (location.host + location.pathname).replace(/index\.html$/, '').replace(/\/$/, ''),
+  source: data.source === 'compiled'
+    ? `Finals from ESPN, CBS & Fox box scores · ${updated}`
+    : `Data: CollegeFootballData.com · ${updated}`,
+};
 
 let state = readState();
 
 function ctx(): Ctx {
-  const confInfo = CONFERENCES.find((c) => c.id === state.conf)!;
-  return {
-    conf: state.conf,
-    confLabel: confInfo.short,
-    data,
-    a: analysisFor(state.conf),
-    from: state.from,
-    to: state.to,
-    meta: meta(),
-    href: (p) => href(state, p as Partial<State>),
-  };
+  return { ...state, data, a, cycle: a.rings[state.ring] ?? a.cycle, meta, href: (p) => href(state, p) };
 }
 
 function render() {
   const c = ctx();
-  const { a } = c;
-  const confInfo = CONFERENCES.find((x) => x.id === state.conf)!;
-  const pct = a.teams.length ? Math.round((a.cycle.length / a.teams.length) * 100) : 0;
-  const body = { diagram: renderDiagram, proof: renderProof, grid: renderGrid, log: renderLog }[state.view](c);
-  const live = data.source !== 'seed';
+  const n = c.cycle.length;
+  const body = { ring: renderRing, proof: renderProof, grid: renderGrid, scores: renderScores }[state.view](c);
+  const stats: [string, string, string][] = [
+    [n ? `${n}` : '0', 'On the ring', 'Longest loop of results'],
+    [`${a.scc.length}`, 'In the core', `Of ${a.teams.length} teams`],
+    [a.teams.length ? `${Math.round((n / a.teams.length) * 100)}%` : '0%', 'Parity index', 'Ring / conference'],
+    [`${a.games.length}`, 'SEC finals', `Through Week ${maxWeek}`],
+  ];
 
   document.getElementById('app')!.innerHTML = `
-  <div class="mx-auto max-w-[1240px] px-4 md:px-8 pb-16">
-    <header class="pt-6">
-      <div class="flex flex-wrap items-baseline justify-between gap-2 border-b border-ink pb-2">
-        <p class="kicker">${esc(c.meta.edition)}</p>
-        <p class="kicker text-muted">${live ? `Live sync &middot; ${esc(new Date(data.updatedAt).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }))}` : 'Seed results through Oct 17 &middot; Live sync on Saturdays'}</p>
+  <header>
+    <div class="bg-ink text-white" style="box-shadow: inset 0 -5px 0 var(--color-line)">
+      <div class="mx-auto flex max-w-[1240px] flex-wrap items-center justify-between gap-x-6 gap-y-1 px-4 pb-3.5 pt-2.5 md:px-8">
+        <a href="${esc(href(state, { view: 'ring', from: null, to: null }))}" class="flex items-center gap-2.5">
+          <span class="display text-[24px] italic leading-none md:text-[28px]">SEC Parity Index</span>
+          <span class="num bg-line px-1.5 text-[16px] leading-6 text-ink">2026</span>
+        </a>
+        <span class="label text-[13px] text-white/80">Through Week ${maxWeek} &middot; Updated ${esc(updated)}</span>
       </div>
-      <div class="border-b border-ink pt-5 pb-5 md:flex md:items-end md:justify-between md:gap-8">
-        <div>
-          <h1 class="font-serif text-[56px] md:text-[88px] leading-[0.92] tracking-[-0.01em]">The SEC Parity Index</h1>
-          <p class="mt-3 max-w-2xl text-[15px] md:text-[17px] leading-relaxed">An almanac of the 2026 college football season&rsquo;s circular logic: the longest chain of results that loops back on itself, the teams who can each claim to be better than all the others, and the receipts.</p>
-        </div>
-        <div class="mt-5 md:mt-0 shrink-0">
-          <p class="kicker text-muted mb-1.5">Conference</p>
-          <div class="flex flex-wrap" role="group" aria-label="Conference">
-            ${CONFERENCES.map((x) => `<button class="conf" data-conf="${esc(x.id)}" aria-pressed="${x.id === state.conf}">${esc(x.short)}</button>`).join('')}
-          </div>
-        </div>
-      </div>
-      <div class="h-px bg-ink mt-[3px]"></div>
-      <dl class="grid grid-cols-2 md:grid-cols-4 border-x border-b border-ink bg-card mt-6">
-        ${[
-          ['Longest cycle', a.cycle.length ? `${a.cycle.length}` : '&ndash;', a.cycleExhaustive ? 'teams on one ring' : 'teams, best found'],
-          ['Strong component', a.scc.length ? `${a.scc.length}` : '&ndash;', `of ${a.teams.length} teams`],
-          ['Parity index', a.teams.length ? `.${String(pct).padStart(2, '0')}` : '&ndash;', 'ring length / teams'],
-          ['Finals logged', `${a.games.length}`, state.conf === 'FBS' ? 'FBS vs. FBS' : `${esc(confInfo.short)} games`],
-        ].map(([k, v, s], i) => `<div class="px-4 py-3 border-t border-ink ${i % 2 ? '' : 'border-r'} ${i === 1 ? 'md:border-r' : ''} ${i === 3 ? '' : ''}">
-          <dt class="kicker text-muted">${k}</dt>
-          <dd class="flex items-baseline gap-2 mt-1"><span class="tabular text-[30px] leading-none font-medium">${v}</span><span class="text-[12px] text-muted">${s}</span></dd>
+    </div>
+    <div class="mx-auto max-w-[1240px] px-4 pt-8 md:px-8 md:pt-12">
+      <p class="label text-muted">2026 SEC football</p>
+      <h1 class="display mt-1 text-[52px] leading-[0.88] md:text-[104px]">The circle of parity</h1>
+      <p class="mt-4 max-w-2xl text-[17px] leading-relaxed md:text-[19px]">Everybody in the SEC can argue they're better than everybody else. Here's the longest chain of results that proves it, game by game.</p>
+      <dl class="mt-7 grid grid-cols-2 gap-px border border-ink bg-ink md:grid-cols-4">
+        ${stats.map(([v, k, s]) => `<div class="bg-ink px-4 py-3 text-white md:px-5 md:py-4">
+          <dt class="label text-[13px] text-line">${k}</dt>
+          <dd class="mt-0.5"><span class="num block text-[44px] leading-none md:text-[56px]">${v}</span><span class="mt-1 block text-[13px] text-white/70">${s}</span></dd>
         </div>`).join('')}
       </dl>
-      <nav class="mt-6 flex gap-6 overflow-x-auto border-b border-rule" aria-label="Views">
-        ${VIEWS.map((v) => `<a class="tab" href="${esc(href(state, { view: v.id }))}" data-view="${v.id}" aria-current="${v.id === state.view}"><span class="tabular text-muted mr-1.5">${v.num}.</span>${v.label}</a>`).join('')}
+      <nav class="mt-7 grid grid-cols-2 gap-2 sm:flex" aria-label="Views">
+        ${VIEWS.map((v) => `<a class="tab" href="${esc(href(state, { view: v.id }))}" aria-current="${v.id === state.view ? 'page' : 'false'}">${v.label}</a>`).join('')}
       </nav>
-    </header>
-    <main class="mt-6">${body}</main>
-    <footer class="mt-12 border-t border-ink pt-3 grid gap-2 md:grid-cols-[1fr_auto] text-[12px] text-muted">
-      <p>Arrows point from winner to loser. Only games between two teams in the selected group count. ${live ? 'Results from CollegeFootballData.com.' : 'Seed results bundled through Week 7 (Oct 17, 2026); replaced by CollegeFootballData.com finals when the Saturday sync runs.'}</p>
-      <p class="tabular">Season 2026 &middot; ${esc(c.meta.site)}</p>
-    </footer>
-  </div>`;
-  document.title = state.view === 'proof' && state.from && state.to
-    ? `${state.from} > ${state.to} · The SEC Parity Index`
-    : 'The SEC Parity Index';
+    </div>
+  </header>
+  <main class="mx-auto max-w-[1240px] px-4 pb-16 pt-7 md:px-8">${body}</main>
+  <footer class="border-t border-ink bg-card">
+    <div class="mx-auto grid max-w-[1240px] gap-2 px-4 py-5 text-[14px] text-muted md:grid-cols-[1fr_auto] md:px-8">
+      <p>SEC conference games only. Arrows and chains run from winner to loser. ${data.source === 'compiled'
+        ? 'Finals compiled from ESPN, CBS Sports and Fox Sports box scores; updated automatically from CollegeFootballData.com on Saturdays.'
+        : 'Finals from CollegeFootballData.com, refreshed every 10 minutes on Saturdays.'}</p>
+      <p class="label">${esc(meta.site)}</p>
+    </div>
+  </footer>`;
+
+  const [from, to] = proofPair(c);
+  document.title = state.view === 'proof' ? `${from} > ${to} | SEC Parity Index` : 'SEC Parity Index';
 }
 
 function go(next: Partial<State>, push = true) {
   state = { ...state, ...next };
-  if (next.conf) {
-    const a = analysisFor(state.conf);
-    if (state.from && !a.teams.includes(state.from)) state.from = null;
-    if (state.to && !a.teams.includes(state.to)) state.to = null;
-  }
   const url = href(state, {});
   if (push) history.pushState(null, '', url); else history.replaceState(null, '', url);
   render();
 }
 
-function ringCard(c: Ctx) {
-  const { a } = c;
-  const n = a.cycle.length;
-  const games = a.cycle.map((t, i) => edgeGame(a, t, a.cycle[(i + 1) % n])!);
+function navigate(url: string) {
+  history.pushState(null, '', url);
+  const prevView = state.view;
+  state = readState();
+  render();
+  if (state.view !== prevView) document.querySelector('main')?.scrollIntoView({ block: 'start' });
+}
+
+function ringCard(c: Ctx): RingCard {
+  const n = c.cycle.length;
+  const games = c.cycle.map((t, i) => edgeGame(a, t, c.cycle[(i + 1) % n])!);
   return {
-    kind: 'ring' as const,
-    conference: c.confLabel === 'All FBS' ? 'FBS' : c.confLabel,
-    cycle: a.cycle,
+    kind: 'ring',
+    cycle: c.cycle,
     labels: games.map((g) => `${winPts(g)}-${losePts(g)}`),
     stats: [
-      ['Longest cycle', `${n}`],
-      ['Strong component', `${a.scc.length} of ${a.teams.length}`],
-      ['Parity index', `.${String(Math.round((n / a.teams.length) * 100)).padStart(2, '0')}`],
-    ] as [string, string][],
-    lines: a.cycle.slice(0, 16).map((t, i) => `${teamInfo(t).abbr.padEnd(4)} def. ${teamInfo(a.cycle[(i + 1) % n]).abbr.padEnd(4)} ${`${winPts(games[i])}-${losePts(games[i])}`.padStart(5)}  Wk ${games[i].week}`),
+      [`${n}`, 'On the ring'],
+      [`${a.scc.length}`, 'In the core'],
+      [`${Math.round((n / a.teams.length) * 100)}%`, 'Parity index'],
+    ],
+    lines: c.cycle.map((t, i) => [
+      `${teamInfo(t).abbr} over ${teamInfo(c.cycle[(i + 1) % n]).abbr}`,
+      `${winPts(games[i])}-${losePts(games[i])}`,
+      `WK ${games[i].week}`,
+    ]),
   };
 }
 
-function proofCard(c: Ctx) {
-  const { path } = proofPath(c);
+function proofCard(c: Ctx): ProofCard | null {
+  const path = proofPath(c);
   if (!path) return null;
   return {
-    kind: 'proof' as const,
-    conference: c.confLabel,
+    kind: 'proof',
     path,
     hops: path.slice(0, -1).map((t, i) => {
-      const g = edgeGame(c.a, t, path[i + 1])!;
-      return `${winPts(g)}-${losePts(g)}|Wk ${g.week}`;
+      const g = edgeGame(a, t, path[i + 1])!;
+      return { score: `${winPts(g)}-${losePts(g)}`, week: `Wk ${g.week}` };
     }),
   };
 }
 
 document.addEventListener('click', async (e) => {
-  const el = e.target as HTMLElement;
-  const confBtn = el.closest<HTMLElement>('[data-conf]');
-  if (confBtn) return go({ conf: confBtn.dataset.conf as ConferenceId });
+  if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+  const el = e.target as Element;
 
-  const a = el.closest<HTMLAnchorElement>('a[href]');
-  if (a && !a.hasAttribute('download') && a.protocol.startsWith('http') && a.origin === location.origin && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-    e.preventDefault();
-    history.pushState(null, '', a.href);
-    state = readState();
-    render();
-    window.scrollTo({ top: 0 });
-    return;
-  }
-
-  const cell = el.closest<HTMLElement>('[data-href]');
-  if (cell) {
-    history.pushState(null, '', cell.dataset.href!);
-    state = readState();
-    render();
+  const link = el.closest('a[href]') as HTMLAnchorElement | SVGAElement | null;
+  if (link) {
+    const raw = link instanceof SVGAElement ? link.href.baseVal : link.getAttribute('href')!;
+    const url = new URL(raw, location.href);
+    if (!link.hasAttribute('download') && url.origin === location.origin && url.pathname === location.pathname) {
+      e.preventDefault();
+      navigate(url.search || location.pathname);
+    }
     return;
   }
 
   if (el.closest('[data-swap]')) {
-    const { from, to } = proofPath(ctx());
+    const [from, to] = proofPair(ctx());
     return go({ from: to, to: from }, false);
   }
 
-  if (el.closest('[data-copy-link]')) {
-    const btn = el.closest<HTMLButtonElement>('[data-copy-link]')!;
-    try {
-      await navigator.clipboard.writeText(location.href);
-      btn.textContent = 'Link copied';
-    } catch {
-      btn.textContent = 'Copy failed';
-    }
+  const copy = el.closest<HTMLButtonElement>('[data-copy-link]');
+  if (copy) {
+    let ok = true;
+    try { await navigator.clipboard.writeText(location.href); } catch { ok = false; }
+    copy.textContent = ok ? 'Link copied' : 'Copy failed';
+    setTimeout(() => { copy.textContent = 'Copy link'; }, 2000);
     return;
   }
 
@@ -250,20 +208,22 @@ document.addEventListener('click', async (e) => {
     const card = exp.dataset.export === 'ring' ? ringCard(c) : proofCard(c);
     if (!card) return;
     const slug = card.kind === 'ring'
-      ? `${c.conf.toLowerCase().replace(/\s+/g, '')}-circle-of-parity`
+      ? `sec-circle-of-parity${c.ring ? `-ring-${c.ring + 1}` : ''}`
       : `${teamInfo(card.path[0]).abbr}-over-${teamInfo(card.path[card.path.length - 1]).abbr}`.toLowerCase();
     exp.disabled = true;
-    await downloadCard(card, size, c.meta, `${slug}-${size}.png`);
-    exp.disabled = false;
+    try {
+      await downloadCard(card, size, c.meta, `${slug}-${size}.png`);
+    } finally {
+      exp.disabled = false;
+    }
   }
 });
 
 document.addEventListener('change', (e) => {
   const el = e.target as HTMLSelectElement;
-  if (el.closest('[data-proof-form]')) {
-    const { from, to } = proofPath(ctx());
-    go({ view: 'proof', from: el.name === 'from' ? el.value : from, to: el.name === 'to' ? el.value : to }, false);
-  }
+  if (!el.closest('[data-proof-form]')) return;
+  const [from, to] = proofPair(ctx());
+  go({ view: 'proof', from: el.name === 'from' ? el.value : from, to: el.name === 'to' ? el.value : to }, false);
 });
 
 window.addEventListener('popstate', () => {

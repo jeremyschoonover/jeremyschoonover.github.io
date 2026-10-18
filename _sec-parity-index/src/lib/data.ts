@@ -1,5 +1,3 @@
-import type { ConferenceId } from '../data/teams';
-
 export interface Game {
   id: string;
   week: number;
@@ -13,11 +11,14 @@ export interface Game {
   homeConf: string;
   awayConf: string;
   conferenceGame: boolean;
+  /** Decided in overtime. */
+  ot?: boolean;
 }
 
 export interface Dataset {
   season: number;
-  source: 'seed' | 'collegefootballdata.com';
+  /** `compiled`: hand-checked finals bundled with the app; replaced by the first CFBD sync. */
+  source: 'compiled' | 'collegefootballdata.com';
   updatedAt: string;
   games: Game[];
 }
@@ -27,10 +28,9 @@ export const loser = (g: Game) => (g.homePoints > g.awayPoints ? g.away : g.home
 export const winPts = (g: Game) => Math.max(g.homePoints, g.awayPoints);
 export const losePts = (g: Game) => Math.min(g.homePoints, g.awayPoints);
 
-/** Games in scope for a conference view: league games for a conference, every FBS-vs-FBS game for "FBS". */
-export function gamesFor(games: Game[], conf: ConferenceId): Game[] {
-  if (conf === 'FBS') return games;
-  return games.filter((g) => g.homeConf === conf && g.awayConf === conf);
+/** SEC conference games: both teams in the SEC. */
+export function secGames(games: Game[]): Game[] {
+  return games.filter((g) => g.homeConf === 'SEC' && g.awayConf === 'SEC');
 }
 
 export function teamsIn(games: Game[]): string[] {
@@ -70,7 +70,12 @@ export function normalizeCfbdGame(r: Raw): Game | null {
     homeConf: String(pick(r, 'homeConference', 'home_conference') ?? ''),
     awayConf: String(pick(r, 'awayConference', 'away_conference') ?? ''),
     conferenceGame: Boolean(pick(r, 'conferenceGame', 'conference_game')),
+    ot: lineScoreCount(pick(r, 'homeLineScores', 'home_line_scores')) > 4,
   };
+}
+
+function lineScoreCount(v: unknown): number {
+  return Array.isArray(v) ? v.length : 0;
 }
 
 /** Kickoffs are stored in UTC; a 10:30pm ET kickoff is the next day in UTC, so shift to Eastern. */
