@@ -14,7 +14,7 @@
     <meta property="og:image" content="{{PAGE_URL}}og.png?v={{VERSION}}" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="{{ALT}}" />
+    <meta property="og:image:alt" content="{{OG_ALT}}" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#FFFFFF" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
@@ -36,12 +36,13 @@
 
       <section class="mt-14" aria-labelledby="better">
         <h2 id="better" class="display text-[40px]">Who's better?</h2>
-        <form class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2" data-form hidden>
+        <form class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2" data-form data-from="{{DEFAULT_FROM}}" data-to="{{DEFAULT_TO}}" hidden>
           <select class="pick" name="from" aria-label="This team"></select>
           <span class="display text-[28px]" aria-hidden="true">&gt;</span>
           <select class="pick" name="to" aria-label="is better than this team"></select>
         </form>
-        <div data-proof aria-live="polite"></div>
+        <div data-proof></div>
+        <p class="sr-only" role="status" data-status></p>
         <noscript><p class="mt-4 text-[15px] text-gray">Turn on JavaScript to compare teams.</p></noscript>
       </section>
     </main>
@@ -50,12 +51,12 @@
       <div class="border-t border-line pt-5">
         <details>
           <summary class="label cursor-pointer text-ink">How it works</summary>
-          <p class="mt-2">A circle of suck is a loop of results where every team beat the next one and the last team beat the first, so every team in it can claim to be better than all the others. This is the longest loop in the {{LEAGUE}} this season. Only {{LEAGUE}} conference games count, and it's recalculated after every final.</p>
+          <p class="mt-2">A circle of suck is a loop of results where every team beat the next one and the last team beat the first, so each of them can claim to be better than all the others. This is the longest loop in {{LEAGUE}} play this season. Only conference games count, and it updates after every final.</p>
           <p class="mt-2">The branch is the longest chain of wins running off the circle, so the teams outside it have a place too.</p>
-          <p class="mt-2">Who's better? finds the shortest chain of wins from one team to another.</p>
+          <p class="mt-2">&ldquo;Who&rsquo;s better?&rdquo; shows the shortest chain of wins from the first team to the second.</p>
         </details>
-        <p class="mt-4">Last game {{LAST_GAME}}. {{SOURCE_LINE}} <a class="underline" href="{{ISSUES}}">Report a wrong score</a>.</p>
-        <p class="mt-2">Not affiliated with or endorsed by the Southeastern Conference or any of its member schools. Team names and logos are trademarks of their respective owners and are used only to identify the teams.</p>
+        <p class="mt-4">{{RESULTS_LINE}} <a class="underline" href="{{ISSUES}}">Report a wrong score</a>.</p>
+        <p class="mt-2">Circle of Suck is an independent fan project, not affiliated with or endorsed by the Southeastern Conference or any of its member schools. The SEC name, team names and logos are trademarks of their respective owners and are used only to identify the conference and teams.</p>
         <p class="mt-2">&copy; {{SEASON}} <a class="underline" href="{{AUTHOR_URL}}">{{AUTHOR}}</a> &middot; No cookies, no tracking.</p>
       </div>
     </footer>

@@ -11,11 +11,17 @@ export const SITE = {
   origin: 'https://jeremyschoonover.github.io',
   /** Site root; leagues live below it. */
   root: '/circle-of-suck/',
+  /** League the site root sends visitors to. */
+  home: 'sec',
   /** Short form printed on images as the watermark. */
   display: 'jeremyschoonover.github.io/circle-of-suck',
   author: 'Jeremy Schoonover',
   authorUrl: 'https://jeremyschoonover.github.io/',
-  issues: 'https://github.com/jeremyschoonover/jeremyschoonover.github.io/issues/new',
+  /** Opens a pre-filled issue; needs a GitHub account. */
+  issues: 'https://github.com/jeremyschoonover/jeremyschoonover.github.io/issues/new?' + new URLSearchParams({
+    title: 'Wrong score: ',
+    body: 'Game:\nScore shown:\nCorrect score:\nSource link:',
+  }),
 } as const;
 
 export const LEAGUE = { id: 'sec', name: 'SEC', season: 2026 } as const;
@@ -25,6 +31,7 @@ export const PAGE_URL = `${SITE.origin}${SITE.root}${LEAGUE.id}/`;
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 /** "Oct 17, 2026" from an ISO date. */
 export function longDate(iso: string): string {
+  if (!iso) return '';
   const [y, m, d] = iso.split('-').map(Number);
   return `${MONTHS[m - 1]} ${d}, ${y}`;
 }
@@ -59,9 +66,10 @@ export function info(data: Dataset): Info {
   const rest = a.standings.map((r) => r.team).filter((t) => !shown.has(t));
   const week = Math.max(0, ...a.games.map((g) => g.week));
   const lastGame = a.games.map((g) => g.date).sort().at(-1) ?? '';
-  const sourceLine = data.source === 'compiled'
-    ? 'Scores compiled from ESPN, CBS Sports and Fox Sports box scores.'
-    : 'Scores from CollegeFootballData.com.';
+  const source = data.source === 'compiled'
+    ? 'compiled from ESPN, CBS Sports and Fox Sports box scores'
+    : 'from CollegeFootballData.com';
+  const sourceLine = lastGame ? `Results through ${longDate(lastGame)}, ${source}.` : 'No results yet this season.';
   const said = (rs: Result[]) => rs.map((r) => `${r.winner} beat ${r.loser} ${r.score}`).join(', ');
   const alt = ring.length
     ? `${LEAGUE.name} circle of suck through Week ${week}: ${said(results)}.`

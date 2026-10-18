@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import seed from '../data/games-2026.json';
+// A frozen copy of the results through Week 7. The live data/games-2026.json changes every
+// Saturday, so tests that pin exact circles must not read it.
+import seed from './fixtures/sec-2026-week7.json';
+import liveData from '../data/games-2026.json';
 import { type Dataset, type Game, secGames } from '../src/lib/data';
 import { allDistances, analyze, buildGraph, longestCycle, mainBranch, shortestPath, stronglyConnected } from '../src/lib/graph';
 import { teamInfo } from '../src/data/teams';
@@ -130,5 +133,28 @@ describe('graph primitives', () => {
     const r = longestCycle(buildGraph(secGames(data.games)), { maxSteps: 20 });
     expect(r.exhaustive).toBe(false);
     expect(r.cycle.length).toBeLessThanOrEqual(11);
+  });
+});
+
+describe('live data (whatever week it is)', () => {
+  const live = secGames((liveData as Dataset).games);
+  const a = analyze(live);
+
+  it('never has a team playing twice in one week, and has no ties', () => {
+    const seen = new Set<string>();
+    for (const g of live) {
+      expect(g.homePoints).not.toBe(g.awayPoints);
+      for (const t of [g.home, g.away]) {
+        const k = `${t}@${g.week}`;
+        expect(seen.has(k), k).toBe(false);
+        seen.add(k);
+      }
+    }
+  });
+
+  it('draws a circle and branch made only of real results', () => {
+    a.cycle.forEach((t, i) => expect(a.graph.adj.get(t)).toContain(a.cycle[(i + 1) % a.cycle.length]));
+    const b = mainBranch(a.graph, a.cycle);
+    b.slice(0, -1).forEach((t, i) => expect(a.graph.adj.get(t)).toContain(b[i + 1]));
   });
 });

@@ -1,13 +1,16 @@
 name: Circle of Suck - Saturday sync
 
-# Every 10 minutes on Saturdays (UTC), plus the early-Sunday UTC hours that cover West Coast
-# kickoffs: pull finals from CollegeFootballData.com, recompute the circle, re-render the post
-# image, rebuild the site into circle-of-suck/, and commit. The commit triggers the normal
-# GitHub Pages build for this site.
+# During the season (August-December): every 15 minutes on Saturdays (UTC) and the early-Sunday
+# UTC hours that cover West Coast kickoffs, plus one weekday-morning run for Thursday and Friday
+# games. Each run pulls finals from CollegeFootballData.com, recomputes the circle, re-renders the
+# post image, rebuilds the site into circle-of-suck/ and commits; the commit triggers the normal
+# GitHub Pages build. That's at most about 680 API calls a month, inside CFBD's free tier of 1,000.
+# Minutes are offset from :00, when GitHub's scheduler is busiest and most often delays runs.
 on:
   schedule:
-    - cron: '*/10 * * * 6'
-    - cron: '*/10 0-8 * * 0'
+    - cron: '7-59/15 * * 8-12 6'
+    - cron: '7-59/15 0-8 * 8-12 0'
+    - cron: '17 13 * 8-12 1-5'
   push:
     branches: [main]
     paths: ['_circle-of-suck/**', '.github/workflows/saturday-cron.yml']
@@ -22,13 +25,13 @@ concurrency:
 
 jobs:
   sync:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: _circle-of-suck
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -54,4 +57,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "Circle of Suck: sync $(date -u +%Y-%m-%dT%H:%MZ)"
+          # main may have moved since checkout (a human push, or a run queued behind this one).
+          git pull --rebase origin main
           git push

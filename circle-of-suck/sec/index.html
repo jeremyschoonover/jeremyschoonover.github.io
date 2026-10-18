@@ -3,24 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SEC Circle of Suck 2026 | Circle of Suck</title>
+    <title>2026 SEC Circle of Suck</title>
     <meta name="description" content="Every team beat the next one, all the way around. The 2026 SEC circle of suck, through Week 7 and updated after every game." />
     <link rel="canonical" href="https://jeremyschoonover.github.io/circle-of-suck/sec/" />
     <meta property="og:site_name" content="Circle of Suck" />
-    <meta property="og:title" content="SEC Circle of Suck 2026 | Circle of Suck" />
+    <meta property="og:title" content="2026 SEC Circle of Suck" />
     <meta property="og:description" content="Every team beat the next one, all the way around. The 2026 SEC circle of suck, through Week 7 and updated after every game." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://jeremyschoonover.github.io/circle-of-suck/sec/" />
-    <meta property="og:image" content="https://jeremyschoonover.github.io/circle-of-suck/sec/og.png?v=98dfd9aea2" />
+    <meta property="og:image" content="https://jeremyschoonover.github.io/circle-of-suck/sec/og.png?v=3b8acda5af" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="SEC circle of suck through Week 7: Georgia beat Oklahoma 41-13, Oklahoma beat Texas 27-24, Texas beat Tennessee 20-17, Tennessee beat Alabama 26-10, Alabama beat Kentucky 45-17, Kentucky beat LSU 35-34, LSU beat Mississippi State 31-0, Mississippi State beat South Carolina 41-34, South Carolina beat Florida 38-19, Florida beat Auburn 44-39, Auburn beat Georgia 27-24. Not in the circle: Ole Miss, Missouri, Texas A&amp;M, Arkansas, Vanderbilt." />
+    <meta property="og:image:alt" content="The 2026 SEC circle of suck through Week 7: 11 teams, each of which beat the next, from Georgia around to Auburn." />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#FFFFFF" />
     <link rel="icon" href="favicon.svg" type="image/svg+xml" />
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
-    <script type="module" crossorigin src="./assets/index-BsZgLr4P.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-OgNPt0y8.css">
+    <script type="module" crossorigin src="./assets/index-DCvljBSU.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Bbq7EMYi.css">
   </head>
   <body>
     <header class="mx-auto flex max-w-[560px] items-center justify-between px-4 pt-4 pb-3">
@@ -30,20 +30,21 @@
 
     <main class="mx-auto max-w-[560px] px-4">
       <h1 class="sr-only">SEC Circle of Suck, 2026 season, through Week 7</h1>
-      <img src="circle.png?v=98dfd9aea2" alt="SEC circle of suck through Week 7: Georgia beat Oklahoma 41-13, Oklahoma beat Texas 27-24, Texas beat Tennessee 20-17, Tennessee beat Alabama 26-10, Alabama beat Kentucky 45-17, Kentucky beat LSU 35-34, LSU beat Mississippi State 31-0, Mississippi State beat South Carolina 41-34, South Carolina beat Florida 38-19, Florida beat Auburn 44-39, Auburn beat Georgia 27-24. Not in the circle: Ole Miss, Missouri, Texas A&amp;M, Arkansas, Vanderbilt." width="1080" height="1350" fetchpriority="high" class="block h-auto w-full border border-line" />
+      <img src="circle.png?v=3b8acda5af" alt="SEC circle of suck through Week 7: Georgia beat Oklahoma 41-13, Oklahoma beat Texas 27-24, Texas beat Tennessee 20-17, Tennessee beat Alabama 26-10, Alabama beat Kentucky 45-17, Kentucky beat LSU 35-34, LSU beat Mississippi State 31-0, Mississippi State beat South Carolina 41-34, South Carolina beat Florida 38-19, Florida beat Auburn 44-39, Auburn beat Georgia 27-24. Branching off Florida: Florida beat Ole Miss 52-28, Ole Miss beat Missouri 31-3, Missouri beat Texas A&amp;M 27-6, Texas A&amp;M beat Arkansas 34-7, Arkansas beat Vanderbilt 31-21." width="1080" height="1350" fetchpriority="high" class="block h-auto w-full border border-line" />
       <div class="mt-3 grid grid-cols-2 gap-2">
-        <a class="btn" href="circle.png?v=98dfd9aea2" download="sec-circle-of-suck-week-7.png">Save image</a>
+        <a class="btn" href="circle.png?v=3b8acda5af" download="sec-circle-of-suck-week-7.png">Save image</a>
         <button class="btn" type="button" data-share hidden>Share</button>
       </div>
 
       <section class="mt-14" aria-labelledby="better">
         <h2 id="better" class="display text-[40px]">Who's better?</h2>
-        <form class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2" data-form hidden>
+        <form class="mt-4 grid grid-cols-[1fr_auto_1fr] items-center gap-2" data-form data-from="Oklahoma" data-to="Georgia" hidden>
           <select class="pick" name="from" aria-label="This team"></select>
           <span class="display text-[28px]" aria-hidden="true">&gt;</span>
           <select class="pick" name="to" aria-label="is better than this team"></select>
         </form>
-        <div data-proof aria-live="polite"></div>
+        <div data-proof></div>
+        <p class="sr-only" role="status" data-status></p>
         <noscript><p class="mt-4 text-[15px] text-gray">Turn on JavaScript to compare teams.</p></noscript>
       </section>
     </main>
@@ -52,11 +53,12 @@
       <div class="border-t border-line pt-5">
         <details>
           <summary class="label cursor-pointer text-ink">How it works</summary>
-          <p class="mt-2">A circle of suck is a loop of results where every team beat the next one and the last team beat the first, so every team in it can claim to be better than all the others. This is the longest loop in the SEC this season. Only SEC conference games count, and it's recalculated after every final.</p>
-          <p class="mt-2">Who's better? finds the shortest chain of wins from one team to another.</p>
+          <p class="mt-2">A circle of suck is a loop of results where every team beat the next one and the last team beat the first, so each of them can claim to be better than all the others. This is the longest loop in SEC play this season. Only conference games count, and it updates after every final.</p>
+          <p class="mt-2">The branch is the longest chain of wins running off the circle, so the teams outside it have a place too.</p>
+          <p class="mt-2">&ldquo;Who&rsquo;s better?&rdquo; shows the shortest chain of wins from the first team to the second.</p>
         </details>
-        <p class="mt-4">Last game Oct 17, 2026. Scores compiled from ESPN, CBS Sports and Fox Sports box scores. <a class="underline" href="https://github.com/jeremyschoonover/jeremyschoonover.github.io/issues/new">Report a wrong score</a>.</p>
-        <p class="mt-2">Not affiliated with or endorsed by the Southeastern Conference or any of its member schools. Team names and logos are trademarks of their respective owners and are used only to identify the teams.</p>
+        <p class="mt-4">Results through Oct 17, 2026, compiled from ESPN, CBS Sports and Fox Sports box scores. <a class="underline" href="https://github.com/jeremyschoonover/jeremyschoonover.github.io/issues/new?title=Wrong+score%3A+&amp;body=Game%3A%0AScore+shown%3A%0ACorrect+score%3A%0ASource+link%3A">Report a wrong score</a>.</p>
+        <p class="mt-2">Circle of Suck is an independent fan project, not affiliated with or endorsed by the Southeastern Conference or any of its member schools. The SEC name, team names and logos are trademarks of their respective owners and are used only to identify the conference and teams.</p>
         <p class="mt-2">&copy; 2026 <a class="underline" href="https://jeremyschoonover.github.io/">Jeremy Schoonover</a> &middot; No cookies, no tracking.</p>
       </div>
     </footer>

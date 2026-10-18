@@ -5,7 +5,7 @@ import tailwindcss from '@tailwindcss/vite';
 import dataset from './data/games-2026.json';
 import type { Dataset } from './src/lib/data';
 import { esc } from './src/lib/ui';
-import { info, LEAGUE, longDate, PAGE_URL, SITE } from './src/site';
+import { info, LEAGUE, PAGE_URL, SITE } from './src/site';
 
 /** Fill {{KEY}} placeholders in index.html with the site config and this build's results. */
 function siteHtml(): Plugin {
@@ -17,17 +17,22 @@ function siteHtml(): Plugin {
       // Changes whenever the image does, so browsers and link previews pick up new results.
       const version = existsSync(png) ? createHash('sha256').update(readFileSync(png)).digest('hex').slice(0, 10) : 'dev';
       const vars: Record<string, string> = {
-        TITLE: `${LEAGUE.name} Circle of Suck ${LEAGUE.season} | ${SITE.name}`,
+        TITLE: `${LEAGUE.season} ${LEAGUE.name} Circle of Suck`,
         DESCRIPTION: `Every team beat the next one, all the way around. The ${LEAGUE.season} ${LEAGUE.name} circle of suck, through Week ${i.week} and updated after every game.`,
         SITE_NAME: SITE.name,
         PAGE_URL,
         VERSION: version,
         ALT: i.alt,
+        // Link previews cap image descriptions (X at 420 characters), so they get the short version.
+        OG_ALT: i.a.cycle.length
+          ? `The ${LEAGUE.season} ${LEAGUE.name} circle of suck through Week ${i.week}: ${i.a.cycle.length} teams, each of which beat the next, from ${i.a.cycle[0]} around to ${i.a.cycle.at(-1)}.`
+          : `The ${LEAGUE.season} ${LEAGUE.name} circle of suck: no circle yet.`,
         LEAGUE: LEAGUE.name,
         SEASON: String(LEAGUE.season),
         WEEK: String(i.week),
-        LAST_GAME: longDate(i.lastGame),
-        SOURCE_LINE: i.sourceLine,
+        RESULTS_LINE: i.sourceLine,
+        DEFAULT_FROM: i.a.cycle[1] ?? i.a.teams[0] ?? '',
+        DEFAULT_TO: i.a.cycle[0] ?? i.a.teams[1] ?? '',
         ISSUES: SITE.issues,
         AUTHOR: SITE.author,
         AUTHOR_URL: SITE.authorUrl,

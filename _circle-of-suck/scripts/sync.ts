@@ -32,11 +32,20 @@ async function main() {
   if (process.argv.includes('--offline')) {
     console.log('Offline: recomputing from the existing dataset.');
   } else if (!key) {
-    console.log('CFBD_API_KEY not set; keeping the existing dataset.');
+    // A GitHub Actions annotation, so a missing secret shows up on the run instead of passing quietly.
+    console.log('::warning::CFBD_API_KEY is not set; keeping the existing results. Add it under Settings > Secrets and variables > Actions.');
   } else {
-    const games = await fetchGames(key);
-    // Never replace a fuller dataset with a partial response.
-    if (games.length < secGames(data.games).length) {
+    let games: Game[] | null = null;
+    try {
+      games = await fetchGames(key);
+    } catch (e) {
+      // Over quota, a 5xx, a network blip: keep what's on file so the rest of the job still publishes.
+      console.log(`::warning::CFBD fetch failed (${(e as Error).message}); keeping the existing results.`);
+    }
+    if (!games) {
+      // Nothing new; fall through to recompute from what's on file.
+    } else if (games.length < secGames(data.games).length) {
+      // Never replace a fuller dataset with a partial response.
       console.log(`CFBD returned ${games.length} SEC finals, fewer than the ${data.games.length} on file; keeping the existing dataset.`);
     } else if (fingerprint(games) === fingerprint(data.games)) {
       console.log('No new finals.');

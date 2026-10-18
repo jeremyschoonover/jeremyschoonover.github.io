@@ -111,9 +111,9 @@ export interface SearchBudget {
 }
 
 export interface CycleResult {
-  /** One longest cycle (the first found), or [] if the graph is acyclic. */
+  /** The longest cycle with the lowest `score` (the first found if no score), or [] if acyclic. */
   cycle: string[];
-  /** Every distinct longest cycle found, up to `maxCycles`. */
+  /** The first distinct longest cycles found, up to `maxCycles`. */
   cycles: string[][];
   /** False when the search budget ran out before every candidate was ruled out. */
   exhaustive: boolean;
@@ -122,11 +122,17 @@ export interface CycleResult {
 /**
  * Longest simple cycles in the beat graph (NP-hard in general). Searches each strongly connected
  * component with a branch-and-bound DFS that only extends a cycle through vertices ordered after its
- * start, so every cycle is enumerated once. Ties are kept so callers can choose among equally long rings.
+ * start, so every cycle is enumerated once. With a `score`, every tie is scored and the lowest wins.
  */
-export function longestCycle(g: WinGraph, opts: SearchBudget & { maxCycles?: number } = {}): CycleResult {
+export function longestCycle(
+  g: WinGraph,
+  opts: SearchBudget & { maxCycles?: number; score?: (cycle: string[]) => number } = {},
+): CycleResult {
   let maxSteps = opts.maxSteps ?? 5_000_000;
   const maxCycles = opts.maxCycles ?? 50;
+  const score = opts.score;
+  let pick: string[] = [];
+  let pickScore = Infinity;
   const deadline = opts.maxMs ? Date.now() + opts.maxMs : Infinity;
   let steps = 0;
   let best: string[][] = [];
@@ -164,10 +170,19 @@ export function longestCycle(g: WinGraph, opts: SearchBudget & { maxCycles?: num
         }
         if (path.length + reachable(v) < bestLen) return;
         for (const w of nbrs.get(v)!) {
-          if (out() || (bestLen === comp.length && best.length >= maxCycles)) return;
+          // Without a score, stop once a full-length ring has enough company; with one, see every tie.
+          if (out() || (!score && bestLen === comp.length && best.length >= maxCycles)) return;
           if (w === start) {
-            if (path.length > bestLen) { bestLen = path.length; best = [[...path]]; }
-            else if (path.length === bestLen && best.length < maxCycles) best.push([...path]);
+            if (path.length > bestLen) {
+              bestLen = path.length;
+              best = [[...path]];
+              pick = [...path];
+              pickScore = score ? score(path) : 0;
+            } else if (path.length === bestLen) {
+              if (best.length < maxCycles) best.push([...path]);
+              const sc = score ? score(path) : Infinity;
+              if (sc < pickScore) { pick = [...path]; pickScore = sc; }
+            }
             continue;
           }
           if (order.get(w)! < s || visited.has(w)) continue;
@@ -181,7 +196,7 @@ export function longestCycle(g: WinGraph, opts: SearchBudget & { maxCycles?: num
     }
     if (out()) break;
   }
-  return { cycle: best[0] ?? [], cycles: best, exhaustive };
+  return { cycle: pick, cycles: best, exhaustive };
 }
 
 /** Rotate a cycle so it starts at the team that sorts first by `compare`. */
@@ -295,12 +310,15 @@ export function analyze(games: Game[], teams: string[] = [], opts: SearchBudget 
   const graph = buildGraph(games, teams);
   const recs = records(games, graph.teams);
   const cmp = (a: string, b: string) => compareRecords(recs.get(a)!, recs.get(b)!);
-  const { cycles, exhaustive } = longestCycle(graph, opts);
-  const rings = cycles
-    .map((c) => rotateCycle(c, cmp))
+  const { cycle, cycles, exhaustive } = longestCycle(graph, { ...opts, score: (c) => ringMargin(graph, c) });
+  // The tightest ring first (searched across every tie), then the other ties collected along the way.
+  const key = (c: string[]) => [...c].sort().join('>') + '|' + rotateCycle(c, (a, b) => a.localeCompare(b)).join('>');
+  const rest = cycles
+    .filter((c) => key(c) !== key(cycle))
     .map((c) => ({ c, m: ringMargin(graph, c), k: c.join('>') }))
     .sort((x, y) => x.m - y.m || x.k.localeCompare(y.k))
     .map((x) => x.c);
+  const rings = (cycle.length ? [cycle, ...rest] : rest).map((c) => rotateCycle(c, cmp));
   const sccs = stronglyConnected(graph);
   return {
     teams: graph.teams,

@@ -14,7 +14,6 @@ import { info, LEAGUE, longDate, SITE } from '../src/site';
 const FONT = 'Barlow Condensed';
 const INK = '#111111';
 const GRAY = '#6B6B6B';
-const LIGHT = '#9A9A9A';
 
 const require = createRequire(import.meta.url);
 for (const w of [600, 700, 800]) {
@@ -106,14 +105,20 @@ function drawTeam(ctx: SKRSContext2D, team: string, x: number, y: number, s: num
 function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo: number, labelSize: number, start = -Math.PI / 2) {
   const step = (2 * Math.PI) / n;
   const angle = (i: number) => start + step * i;
-  const s = Math.min(maxLogo, 2 * R * Math.sin(Math.PI / n) * 0.62);
+  let s = Math.min(maxLogo, 2 * R * Math.sin(Math.PI / n) * 0.62);
   // Room each mark takes up along the ring, so arrows stop short of wide logos too.
-  const half = ring.map((t, i) => {
+  const head = labelSize * 0.34;
+  const halves = () => ring.map((t, i) => {
     const { w, h } = markSize(t, s);
     const a = angle(i);
     return (Math.abs(Math.sin(a)) * w + Math.abs(Math.cos(a)) * h) / 2;
   });
-  const head = labelSize * 0.34;
+  // Shrink the marks until every arrow has room between its two logos (big rings, small images).
+  let half = halves();
+  while (s > 20 && ring.some((_, i) => half[i] + half[(i + 1) % n] + 20 + 2 * head > step * R)) {
+    s *= 0.96;
+    half = halves();
+  }
   ctx.strokeStyle = INK;
   ctx.fillStyle = INK;
   ctx.lineWidth = Math.max(3, labelSize / 9);
@@ -121,9 +126,12 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
   for (let i = 0; i < n; i++) {
     const a0 = angle(i) + (half[i] + 10) / R;
     const a1 = angle(i + 1) - (half[(i + 1) % n] + 10) / R;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, a0, a1 - head / R);
-    ctx.stroke();
+    // A backwards arc would sweep the whole circle, so skip the line if there's no room for it.
+    if (a1 - head / R > a0) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, R, a0, a1 - head / R);
+      ctx.stroke();
+    }
     // Arrowhead pointing along the clockwise tangent at a1.
     const px = cx + R * Math.cos(a1);
     const py = cy + R * Math.sin(a1);
@@ -216,15 +224,16 @@ function drawBranch(ctx: SKRSContext2D, W: number, ax: number, ay: number, ancho
   teams.slice(1).forEach((t, i) => drawTeam(ctx, t, xs[i], rowY, sm));
 }
 
-/** Anyone on neither the ring nor the branch, as a small captioned row. */
+/** Anyone on neither the ring nor the branch, as a small captioned row that shrinks to fit. */
 function drawRest(ctx: SKRSContext2D, W: number, y: number) {
-  const sm = 52;
-  const gap = 74;
   font(ctx, 700, 22);
   ctx.save();
   ctx.letterSpacing = '2px';
   const caption = 'THE REST';
   const cw = ctx.measureText(caption).width + 28;
+  const room = W - 120 - cw;
+  const gap = Math.min(74, room / Math.max(1, rest.length));
+  const sm = Math.min(52, gap * 0.78);
   const total = cw + gap * (rest.length - 1) + sm;
   let x = W / 2 - total / 2;
   ctx.fillStyle = GRAY;
@@ -236,12 +245,13 @@ function drawRest(ctx: SKRSContext2D, W: number, y: number) {
   rest.forEach((t, i) => drawTeam(ctx, t, x + i * gap, y, sm));
 }
 
+/** Small print along the bottom: how current the image is, and where it came from. */
 function watermark(ctx: SKRSContext2D, W: number, y: number) {
-  font(ctx, 600, 21);
-  ctx.fillStyle = LIGHT;
+  font(ctx, 600, 19);
+  ctx.fillStyle = GRAY;
   ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'left';
-  ctx.fillText(`${LEAGUE.season} · THROUGH WEEK ${week} · ${longDate(lastGame).toUpperCase()}`, 40, y);
+  ctx.fillText(lastGame ? `THROUGH WEEK ${week} · ${longDate(lastGame).toUpperCase()}` : `${LEAGUE.season} SEASON`, 40, y);
   ctx.textAlign = 'right';
   ctx.fillText(SITE.display, W - 40, y);
 }
@@ -329,8 +339,8 @@ function preview(): Buffer {
   font(ctx, 700, 28);
   ctx.fillStyle = GRAY;
   ctx.fillText(`${LEAGUE.season} · THROUGH WEEK ${week}`, 64, 470);
-  font(ctx, 600, 21);
-  ctx.fillStyle = LIGHT;
+  font(ctx, 600, 19);
+  ctx.fillStyle = GRAY;
   ctx.fillText(SITE.display, 64, H - 44);
   return c.toBuffer('image/png');
 }

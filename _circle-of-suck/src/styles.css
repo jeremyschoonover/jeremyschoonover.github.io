@@ -18,8 +18,8 @@ html, body { background: #FFFFFF; color: var(--color-ink); font-family: var(--fo
 .display { font-family: var(--font-display); font-weight: 800; text-transform: uppercase; line-height: 0.95; }
 summary { list-style: none; }
 summary::-webkit-details-marker { display: none; }
-summary::before { content: "+"; display: inline-block; width: 1em; }
-details[open] summary::before { content: "\2212"; }
+summary::before { content: "+"; content: "+" / ""; display: inline-block; width: 1em; }
+details[open] summary::before { content: "\2212"; content: "\2212" / ""; }
 .label { font-family: var(--font-display); font-weight: 700; font-size: 15px; text-transform: uppercase; letter-spacing: 0.06em; }
 .num { font-family: var(--font-display); font-weight: 800; font-variant-numeric: tabular-nums; }
 
@@ -28,7 +28,9 @@ details[open] summary::before { content: "\2212"; }
   border: 2px solid var(--color-ink); border-radius: 0; background: #FFFFFF; color: var(--color-ink);
   font-family: var(--font-display); font-weight: 700; font-size: 17px; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer;
 }
-.btn:hover { background: var(--color-ink); color: #FFFFFF; }
+@media (hover: hover) {
+  .btn:hover { background: var(--color-ink); color: #FFFFFF; }
+}
 
 select.pick {
   appearance: none; width: 100%; min-height: 48px; padding: 0 2.2rem 0 0.75rem;
@@ -38,4 +40,14 @@ select.pick {
   background-position: calc(100% - 12px) 50%; background-repeat: no-repeat;
 }
 
-a:focus-visible, button:focus-visible, select:focus-visible { outline: 3px solid #2563EB; outline-offset: 2px; }
+a:focus-visible, button:focus-visible, select:focus-visible, summary:focus-visible { outline: 3px solid #2563EB; outline-offset: 2px; }
+
+/* Long names ("Mississippi State") must fit the two side-by-side pickers on phones. */
+@media (max-width: 480px) {
+  select.pick { font-size: 16px; padding: 0 1.75rem 0 0.5rem; background-position: calc(100% - 8px) 50%; }
+}
+
+/* High-contrast modes drop background images, which would hide the custom arrow. */
+@media (forced-colors: active) {
+  select.pick { appearance: auto; background-image: none; padding-right: 0.5rem; }
+}
