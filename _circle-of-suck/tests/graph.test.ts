@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import seed from '../data/games-2026.json';
 import { type Dataset, type Game, secGames } from '../src/lib/data';
-import { allDistances, analyze, buildGraph, longestCycle, shortestPath, stronglyConnected } from '../src/lib/graph';
+import { allDistances, analyze, branches, buildGraph, longestCycle, shortestPath, stronglyConnected } from '../src/lib/graph';
 import { teamInfo } from '../src/data/teams';
 
 const data = seed as Dataset;
@@ -72,6 +72,37 @@ describe('SEC parity analysis', () => {
 
   it('has no chain from Texas A&M back into the core', () => {
     expect(shortestPath(a.graph, 'Texas A&M', 'Georgia')).toBeNull();
+  });
+});
+
+describe('branches off the circle', () => {
+  const a = analyze(secGames(data.games));
+  const tree = branches(a.graph, a.cycle);
+
+  it('hangs all five other teams off Florida in one chain of wins', () => {
+    expect(tree.branches.map(abbr)).toEqual([['UF', 'MISS', 'MIZ', 'TAMU', 'ARK', 'VAN']]);
+    expect(tree.unattached).toEqual([]);
+  });
+
+  it('places every team exactly once, using only real results', () => {
+    const shown = new Set(a.cycle);
+    for (const b of tree.branches) {
+      b.slice(0, -1).forEach((t, i) => expect(a.graph.adj.get(t)).toContain(b[i + 1]));
+      const fresh = b.filter((t) => !shown.has(t));
+      expect(fresh).toHaveLength(b.length - 1);
+      fresh.forEach((t) => shown.add(t));
+    }
+    expect([...shown, ...tree.unattached].sort()).toEqual(a.teams);
+  });
+
+  it('attaches a team that beat its way into the circle without being beaten by it', () => {
+    const g = buildGraph([game('A', 'B'), game('B', 'C'), game('C', 'A'), game('X', 'A')]);
+    expect(branches(g, ['A', 'B', 'C']).branches).toEqual([['X', 'A']]);
+  });
+
+  it('leaves teams with no link to the circle unattached', () => {
+    const g = buildGraph([game('A', 'B'), game('B', 'C'), game('C', 'A'), game('D', 'E')]);
+    expect(branches(g, ['A', 'B', 'C'])).toEqual({ branches: [], unattached: ['D', 'E'] });
   });
 });
 

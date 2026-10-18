@@ -22,7 +22,7 @@ for (const w of [600, 700, 800]) {
 }
 
 const data = JSON.parse(readFileSync(new URL('../data/games-2026.json', import.meta.url), 'utf8')) as Dataset;
-const { a, week, lastGame, results, outside } = info(data);
+const { a, week, lastGame, results, branches, unattached } = info(data);
 const ring = a.cycle;
 const n = ring.length;
 
@@ -147,27 +147,86 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
   return s;
 }
 
-/** Centered row(s) of the teams that didn't make the ring. */
-function drawOutside(ctx: SKRSContext2D, W: number, top: number) {
-  ctx.fillStyle = GRAY;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'alphabetic';
-  font(ctx, 700, 28);
-  ctx.save();
-  ctx.letterSpacing = '3px';
-  ctx.fillText(outside.length ? 'NOT IN THE CIRCLE' : 'EVERY TEAM IS IN THE CIRCLE', W / 2, top);
-  ctx.restore();
-  if (!outside.length) return;
-  const perRow = Math.min(outside.length, 8);
-  const rows = Math.ceil(outside.length / perRow);
-  const s = Math.min(92, (W - 200) / perRow - 24);
-  const gap = s + 28;
-  outside.forEach((t, i) => {
-    const row = Math.floor(i / perRow);
-    const inRow = Math.min(perRow, outside.length - row * perRow);
-    const x = W / 2 + (i % perRow - (inRow - 1) / 2) * gap;
-    const y = top + 30 + s / 2 + row * (s + 16) + (rows > 1 ? 0 : 6);
-    drawTeam(ctx, t, x, y, s);
+/** A run of marks joined by arrows (a branch, or a piece of a long one). Lone marks have no scores. */
+interface Segment { teams: string[]; scores: string[] }
+/** One line of the "off the circle" section: segments side by side, separated by a gap. */
+interface Row { segments: Segment[]; caption?: string }
+
+const ROW_SLOTS = 6;
+const GAP = 0.8;
+
+/**
+ * Lay the branches out in rows of at most six marks. Long branches wrap, repeating the team they
+ * wrap on; short ones share a row. Teams with no link to the rest go on their own captioned row.
+ */
+function branchRows(): Row[] {
+  const segments: Segment[] = [];
+  for (const b of branches) {
+    for (let i = 0; i < b.teams.length - 1; i += ROW_SLOTS - 1) {
+      segments.push({ teams: b.teams.slice(i, i + ROW_SLOTS), scores: b.results.slice(i, i + ROW_SLOTS - 1).map((r) => r.score) });
+    }
+  }
+  const rows: Row[] = [];
+  const width = (segs: Segment[]) => segs.reduce((w, sg) => w + sg.teams.length, 0) + (segs.length - 1) * GAP;
+  for (const sg of [...segments].sort((x, y) => y.teams.length - x.teams.length)) {
+    const fit = rows.find((r) => width([...r.segments, sg]) <= ROW_SLOTS);
+    if (fit) fit.segments.push(sg); else rows.push({ segments: [sg] });
+  }
+  for (let i = 0; i < unattached.length; i += ROW_SLOTS) {
+    rows.push({
+      segments: unattached.slice(i, i + ROW_SLOTS).map((t) => ({ teams: [t], scores: [] })),
+      caption: i === 0 ? 'NOT CONNECTED YET' : undefined,
+    });
+  }
+  return rows;
+}
+
+function arrowRight(ctx: SKRSContext2D, x1: number, x2: number, y: number, head: number) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y);
+  ctx.lineTo(x2 - head, y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y);
+  ctx.lineTo(x2 - head * 1.6, y - head * 0.75);
+  ctx.lineTo(x2 - head * 1.6, y + head * 0.75);
+  ctx.closePath();
+  ctx.fill();
+}
+
+/** Horizontal advance of a row in units of `step`: 1 between joined marks, 1 + GAP between segments. */
+const rowUnits = (row: Row) => row.segments.reduce((u, sg) => u + sg.teams.length - 1, 0) + (row.segments.length - 1) * (1 + GAP);
+
+function drawRow(ctx: SKRSContext2D, W: number, row: Row, cy: number, sm: number, step: number) {
+  const units = rowUnits(row);
+  let x = W / 2 - (step * units) / 2;
+  const y = row.caption ? cy + 12 : cy;
+  if (row.caption) {
+    font(ctx, 700, 20);
+    ctx.fillStyle = GRAY;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(row.caption, W / 2, y - sm / 2 - 10);
+  }
+  const label = Math.round(Math.max(20, sm * 0.36));
+  row.segments.forEach((sg, k) => {
+    if (k > 0) x += step * (1 + GAP);
+    const xs = sg.teams.map((_, i) => x + i * step);
+    ctx.strokeStyle = INK;
+    ctx.fillStyle = INK;
+    ctx.lineWidth = Math.max(2.5, label / 9);
+    ctx.lineCap = 'round';
+    sg.scores.forEach((score, i) => {
+      const xa = xs[i] + markSize(sg.teams[i], sm).w / 2 + 12;
+      const xb = xs[i + 1] - markSize(sg.teams[i + 1], sm).w / 2 - 12;
+      arrowRight(ctx, xa, xb, y, label * 0.34);
+      font(ctx, 800, label);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(score, (xa + xb) / 2, y - 12);
+    });
+    sg.teams.forEach((t, i) => drawTeam(ctx, t, xs[i], y, sm));
+    x = xs[xs.length - 1];
   });
 }
 
@@ -181,6 +240,23 @@ function watermark(ctx: SKRSContext2D, W: number, y: number) {
   ctx.fillText(SITE.display, W - 40, y);
 }
 
+/** Shown until some loop of results exists (early season): the title and an honest "not yet". */
+function noCircle(ctx: SKRSContext2D, cx: number, cy: number, maxW: number) {
+  ctx.fillStyle = INK;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  font(ctx, 800, fit(ctx, LEAGUE.name, 800, 170, maxW * 0.5));
+  ctx.fillText(LEAGUE.name, cx, cy - 90);
+  font(ctx, 800, fit(ctx, 'CIRCLE OF SUCK', 800, 88, maxW));
+  ctx.fillText('CIRCLE OF SUCK', cx, cy - 6);
+  font(ctx, 800, fit(ctx, 'NOT YET', 800, 120, maxW));
+  ctx.fillStyle = '#C8C8C8';
+  ctx.fillText('NOT YET', cx, cy + 120);
+  font(ctx, 700, 30);
+  ctx.fillStyle = GRAY;
+  ctx.fillText('Every chain of wins still runs one way.', cx, cy + 180);
+}
+
 function post(): Buffer {
   const W = 1080;
   const H = 1350;
@@ -188,8 +264,22 @@ function post(): Buffer {
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, W, H);
-  const cy = 528;
-  const R = 366;
+  if (!n) {
+    noCircle(ctx, W / 2, H / 2 - 60, 700);
+    watermark(ctx, W, H - 34);
+    return c.toBuffer('image/png');
+  }
+
+  // The "off the circle" section grows upward from the watermark; the ring takes what's left.
+  const rows = branchRows();
+  const rowH = rows.length <= 1 ? 150 : Math.max(84, Math.min(118, 330 / rows.length));
+  const headingH = 56;
+  const divider = H - 80 - rows.length * rowH - headingH - 12;
+  const ringTop = 40;
+  const ringBottom = divider - 28;
+  const cy = (ringTop + ringBottom) / 2;
+  const R = Math.min(366, (ringBottom - ringTop) / 2 - 72);
+
   const s = drawRing(ctx, W / 2, cy, R, 132, 40);
   const inner = 2 * (R - s / 2 - 24);
   ctx.fillStyle = INK;
@@ -199,9 +289,22 @@ function post(): Buffer {
   ctx.fillText(LEAGUE.name, W / 2, cy - 4);
   font(ctx, 800, fit(ctx, 'CIRCLE OF SUCK', 800, 88, inner * 0.92));
   ctx.fillText('CIRCLE OF SUCK', W / 2, cy + 78);
+
   ctx.fillStyle = '#E5E5E5';
-  ctx.fillRect(80, 1036, W - 160, 2);
-  drawOutside(ctx, W, 1100);
+  ctx.fillRect(80, divider, W - 160, 2);
+  ctx.fillStyle = GRAY;
+  ctx.textAlign = 'center';
+  font(ctx, 700, 28);
+  ctx.save();
+  ctx.letterSpacing = '3px';
+  ctx.fillText(rows.length ? 'OFF THE CIRCLE' : 'EVERY TEAM IS IN THE CIRCLE', W / 2, divider + 50);
+  ctx.restore();
+  // One spacing for every row, so arrows are the same length throughout.
+  const sm = Math.min(84, rowH * 0.6);
+  const widest = Math.max(1, ...rows.map(rowUnits));
+  const step = Math.min(rows.length > 1 ? 160 : 176, (W - 140 - sm) / widest);
+  rows.forEach((row, k) => drawRow(ctx, W, row, divider + headingH + 12 + rowH * (k + 0.5), sm, step));
+
   watermark(ctx, W, H - 34);
   return c.toBuffer('image/png');
 }
@@ -213,6 +316,10 @@ function preview(): Buffer {
   const ctx = c.getContext('2d');
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, W, H);
+  if (!n) {
+    noCircle(ctx, W / 2, H / 2 - 20, 640);
+    return c.toBuffer('image/png');
+  }
   drawRing(ctx, 862, 318, 214, 86, 27);
   ctx.fillStyle = INK;
   ctx.textAlign = 'left';
@@ -265,11 +372,9 @@ function icon(): Buffer {
 }
 
 writeFileSync(new URL('../public/apple-touch-icon.png', import.meta.url), icon());
-if (!n) {
-  console.log('No circle yet; skipping the post image.');
-} else {
-  writeFileSync(new URL('../public/circle.png', import.meta.url), post());
-  writeFileSync(new URL('../public/og.png', import.meta.url), preview());
-  const withLogos = a.teams.filter((t) => logos.get(t)).length;
-  console.log(`Rendered a ${n}-team circle (${outside.length} outside) with ${withLogos}/${a.teams.length} logos.`);
-}
+writeFileSync(new URL('../public/circle.png', import.meta.url), post());
+writeFileSync(new URL('../public/og.png', import.meta.url), preview());
+const withLogos = a.teams.filter((t) => logos.get(t)).length;
+console.log(n
+  ? `Rendered a ${n}-team circle, ${branches.length} branch(es), ${unattached.length} unattached, ${withLogos}/${a.teams.length} logos.`
+  : 'No circle yet; rendered the "not yet" image.');
