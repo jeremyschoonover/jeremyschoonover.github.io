@@ -31,11 +31,43 @@ const labels = ring.map((t, i) => {
   return `${winPts(g)}-${losePts(g)}`;
 });
 
-async function logo(team: string): Promise<Image | null> {
+interface Logo { img: Image; sx: number; sy: number; sw: number; sh: number }
+
+/** Load a logo and find the bounding box of its visible pixels, so padding doesn't shrink it. */
+async function logo(team: string): Promise<Logo | null> {
   const file = new URL(`../public/logos/${teamInfo(team).abbr}.png`, import.meta.url);
-  return existsSync(file) ? loadImage(readFileSync(file)) : null;
+  if (!existsSync(file)) return null;
+  const img = await loadImage(readFileSync(file));
+  const c = createCanvas(img.width, img.height);
+  const ctx = c.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  const px = ctx.getImageData(0, 0, img.width, img.height).data;
+  let x0 = img.width, y0 = img.height, x1 = -1, y1 = -1;
+  for (let y = 0; y < img.height; y++) {
+    for (let x = 0; x < img.width; x++) {
+      if (px[(y * img.width + x) * 4 + 3] > 16) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return null;
+  return { img, sx: x0, sy: y0, sw: x1 - x0 + 1, sh: y1 - y0 + 1 };
 }
 const logos = await Promise.all(ring.map(logo));
+
+/**
+ * Drawn size of team i's mark for a nominal size `s`. Logos are scaled to equal visual area, so a
+ * wide wordmark and a tall letter read as the same weight, then capped so neither gets huge.
+ */
+function markSize(i: number, s: number): { w: number; h: number } {
+  const l = logos[i];
+  if (!l) return { w: s * 0.84, h: s * 0.84 };
+  const k = Math.min((s * 0.76) / Math.sqrt(l.sw * l.sh), (s * 1.1) / l.sw, (s * 0.92) / l.sh);
+  return { w: l.sw * k, h: l.sh * k };
+}
 
 function font(ctx: SKRSContext2D, weight: number, size: number) {
   ctx.font = `${weight} ${size}px "${FONT}"`;
@@ -48,11 +80,10 @@ function fit(ctx: SKRSContext2D, text: string, weight: number, max: number, widt
 }
 
 function drawTeam(ctx: SKRSContext2D, i: number, x: number, y: number, s: number) {
-  const img = logos[i];
-  if (img) {
-    // ESPN logos are square with transparent padding; keep their aspect ratio inside the box.
-    const k = Math.min(s / img.width, s / img.height);
-    ctx.drawImage(img, x - (img.width * k) / 2, y - (img.height * k) / 2, img.width * k, img.height * k);
+  const l = logos[i];
+  if (l) {
+    const { w, h } = markSize(i, s);
+    ctx.drawImage(l.img, l.sx, l.sy, l.sw, l.sh, x - w / 2, y - h / 2, w, h);
     return;
   }
   const t = teamInfo(ring[i]);
@@ -76,15 +107,20 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
   const step = (2 * Math.PI) / n;
   const angle = (i: number) => -Math.PI / 2 + step * i;
   const s = Math.min(maxLogo, 2 * R * Math.sin(Math.PI / n) * 0.62);
-  const gap = (s * 0.46 + 6) / R;
+  // Angular room each mark takes up along the ring, so arrows stop short of wide logos too.
+  const half = ring.map((_, i) => {
+    const { w, h } = markSize(i, s);
+    const a = angle(i);
+    return (Math.abs(Math.sin(a)) * w + Math.abs(Math.cos(a)) * h) / 2;
+  });
   const head = labelSize * 0.34;
   ctx.strokeStyle = INK;
   ctx.fillStyle = INK;
   ctx.lineWidth = Math.max(3, labelSize / 9);
   ctx.lineCap = 'round';
   for (let i = 0; i < n; i++) {
-    const a0 = angle(i) + gap;
-    const a1 = angle(i + 1) - gap;
+    const a0 = angle(i) + (half[i] + 10) / R;
+    const a1 = angle(i + 1) - (half[(i + 1) % n] + 10) / R;
     ctx.beginPath();
     ctx.arc(cx, cy, R, a0, a1 - head / R);
     ctx.stroke();
@@ -104,8 +140,8 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
     // Push each score outward far enough that its box clears the arrow, wider text going further.
     const mid = angle(i) + step / 2;
     font(ctx, 800, labelSize);
-    const half = ctx.measureText(labels[i]).width / 2;
-    const lr = R + 14 + Math.abs(Math.cos(mid)) * half + Math.abs(Math.sin(mid)) * labelSize * 0.5;
+    const tw = ctx.measureText(labels[i]).width / 2;
+    const lr = R + 14 + Math.abs(Math.cos(mid)) * tw + Math.abs(Math.sin(mid)) * labelSize * 0.5;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(labels[i], cx + lr * Math.cos(mid), cy + lr * Math.sin(mid));
@@ -121,8 +157,8 @@ function post(): Buffer {
   ctx.fillStyle = '#FFFFFF';
   ctx.fillRect(0, 0, W, W);
   const cy = 520;
-  const R = 352;
-  const s = drawRing(ctx, W / 2, cy, R, 128, 40);
+  const R = 366;
+  const s = drawRing(ctx, W / 2, cy, R, 132, 40);
   const inner = 2 * (R - s / 2 - 24);
 
   ctx.fillStyle = INK;
