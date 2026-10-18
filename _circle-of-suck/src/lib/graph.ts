@@ -235,69 +235,36 @@ function edgeMargin(g: WinGraph, w: string, l: string): number {
   return Math.min(...(g.edgeGames.get(edgeKey(w, l)) ?? []).map((x) => winPts(x) - losePts(x)));
 }
 
-export interface Branches {
-  /**
-   * Chains of wins that attach the rest of the teams to the ring, each in win order (teams[i] beat
-   * teams[i+1]). Exactly one end is already placed: the first team of an outward branch, or the last
-   * team of an inward one (teams that beat their way into the circle without being beaten by it).
-   */
-  branches: string[][];
-  /** Teams with no result linking them to anyone placed. */
-  unattached: string[];
-}
-
 /**
- * Hang every team that isn't on the ring off it: repeatedly take the longest chain of wins that
- * runs from a placed team out through unplaced ones, or through unplaced ones into a placed team.
- * Ties go to outward chains, then chains anchored on the ring, then the tightest (smallest combined
- * margin), then alphabetically.
+ * The main branch off the ring: the longest chain of wins that starts at a ring team and runs only
+ * through teams not on the ring. Ties go to the tightest chain (smallest combined margin), then
+ * alphabetically. Returns [] when no ring team has beaten anyone outside it.
  */
-export function branches(g: WinGraph, ring: string[], maxSteps = 2_000_000): Branches {
+export function mainBranch(g: WinGraph, ring: string[], maxSteps = 2_000_000): string[] {
   const onRing = new Set(ring);
-  const placed = new Set(ring);
-  const remaining = new Set(g.teams.filter((t) => !placed.has(t)));
-  const beatenBy = new Map<string, string[]>(g.teams.map((t) => [t, []]));
-  for (const [w, ls] of g.adj) for (const l of ls) beatenBy.get(l)!.push(w);
-  for (const ws of beatenBy.values()) ws.sort();
-  const out: string[][] = [];
+  let best: string[] = [];
+  let bestMargin = Infinity;
   let steps = 0;
-
-  while (remaining.size) {
-    let best: string[] = [];
-    let bestKey: (number | string)[] | null = null;
-    const consider = (chain: string[], outward: boolean) => {
-      const anchor = outward ? chain[0] : chain[chain.length - 1];
-      const margin = chain.slice(1).reduce((m, t, i) => m + edgeMargin(g, chain[i], t), 0);
-      const key = [chain.length, outward ? 1 : 0, onRing.has(anchor) ? 1 : 0, -margin];
-      const cmp = bestKey ? key.findIndex((k, i) => k !== bestKey![i]) : 0;
-      const wins = !bestKey || (cmp >= 0 ? (key[cmp] as number) > (bestKey[cmp] as number) : chain.join('>') < best.join('>'));
-      if (wins) { best = [...chain]; bestKey = key; }
-    };
-    // Walk `next` from each placed team through unplaced ones; `outward` says which way the wins run.
-    const search = (next: Map<string, string[]>, outward: boolean) => {
-      for (const start of [...placed].sort()) {
-        const path = [start];
-        const seen = new Set<string>();
-        const dfs = (v: string) => {
-          if (++steps > maxSteps) return;
-          if (path.length > 1) consider(outward ? path : [...path].reverse(), outward);
-          for (const w of next.get(v) ?? []) {
-            if (!remaining.has(w) || seen.has(w)) continue;
-            seen.add(w); path.push(w);
-            dfs(w);
-            seen.delete(w); path.pop();
-          }
-        };
-        dfs(start);
+  for (const start of [...ring].sort()) {
+    const path = [start];
+    const seen = new Set<string>();
+    const dfs = (v: string, margin: number) => {
+      if (++steps > maxSteps) return;
+      if (path.length > 1 && (path.length > best.length
+        || (path.length === best.length && (margin < bestMargin || (margin === bestMargin && path.join('>') < best.join('>')))))) {
+        best = [...path];
+        bestMargin = margin;
+      }
+      for (const w of g.adj.get(v) ?? []) {
+        if (onRing.has(w) || seen.has(w)) continue;
+        seen.add(w); path.push(w);
+        dfs(w, margin + edgeMargin(g, v, w));
+        seen.delete(w); path.pop();
       }
     };
-    search(g.adj, true);
-    search(beatenBy, false);
-    if (best.length < 2) break;
-    out.push(best);
-    for (const t of best) { placed.add(t); remaining.delete(t); }
+    dfs(start, 0);
   }
-  return { branches: out, unattached: [...remaining].sort() };
+  return best;
 }
 
 export interface Analysis {

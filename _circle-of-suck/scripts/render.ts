@@ -22,7 +22,7 @@ for (const w of [600, 700, 800]) {
 }
 
 const data = JSON.parse(readFileSync(new URL('../data/games-2026.json', import.meta.url), 'utf8')) as Dataset;
-const { a, week, lastGame, results, branches, unattached } = info(data);
+const { a, week, lastGame, results, branch, rest } = info(data);
 const ring = a.cycle;
 const n = ring.length;
 
@@ -99,10 +99,13 @@ function drawTeam(ctx: SKRSContext2D, team: string, x: number, y: number, s: num
   ctx.fillText(t.abbr, x, y + 2);
 }
 
-/** Logos around a circle, clockwise from 12 o'clock, with a curved arrow and score from each winner to its victim. */
-function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo: number, labelSize: number) {
+/**
+ * Logos around a circle, clockwise, with a curved arrow and score from each winner to its victim.
+ * `start` is the canvas angle of ring[0] (default 12 o'clock).
+ */
+function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo: number, labelSize: number, start = -Math.PI / 2) {
   const step = (2 * Math.PI) / n;
-  const angle = (i: number) => -Math.PI / 2 + step * i;
+  const angle = (i: number) => start + step * i;
   const s = Math.min(maxLogo, 2 * R * Math.sin(Math.PI / n) * 0.62);
   // Room each mark takes up along the ring, so arrows stop short of wide logos too.
   const half = ring.map((t, i) => {
@@ -134,11 +137,23 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
     ctx.lineTo(px - tx * head * 1.6 - nx * head * 0.75, py - ty * head * 1.6 - ny * head * 0.75);
     ctx.closePath();
     ctx.fill();
-    // Push each score outward far enough that its box clears the arrow, wider text going further.
+    // Push each score outward until its box clears the arrow and both neighboring logos.
     const mid = angle(i) + step / 2;
     font(ctx, 800, labelSize);
     const tw = ctx.measureText(results[i].score).width / 2;
-    const lr = R + 14 + Math.abs(Math.cos(mid)) * tw + Math.abs(Math.sin(mid)) * labelSize * 0.5;
+    const th = labelSize * 0.42;
+    const boxes = [i, (i + 1) % n].map((j) => {
+      const { w, h } = markSize(ring[j], s);
+      const x = cx + R * Math.cos(angle(j));
+      const y = cy + R * Math.sin(angle(j));
+      return { x0: x - w / 2 - 8, x1: x + w / 2 + 8, y0: y - h / 2 - 8, y1: y + h / 2 + 8 };
+    });
+    let lr = R + 14 + Math.abs(Math.cos(mid)) * tw + Math.abs(Math.sin(mid)) * th;
+    for (let k = 0; k < 40; k++, lr += 3) {
+      const x = cx + lr * Math.cos(mid);
+      const y = cy + lr * Math.sin(mid);
+      if (!boxes.some((b) => x + tw > b.x0 && x - tw < b.x1 && y + th > b.y0 && y - th < b.y1)) break;
+    }
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(results[i].score, cx + lr * Math.cos(mid), cy + lr * Math.sin(mid));
@@ -147,87 +162,78 @@ function drawRing(ctx: SKRSContext2D, cx: number, cy: number, R: number, maxLogo
   return s;
 }
 
-/** A run of marks joined by arrows (a branch, or a piece of a long one). Lone marks have no scores. */
-interface Segment { teams: string[]; scores: string[] }
-/** One line of the "off the circle" section: segments side by side, separated by a gap. */
-interface Row { segments: Segment[]; caption?: string }
-
-const ROW_SLOTS = 6;
-const GAP = 0.8;
-
-/**
- * Lay the branches out in rows of at most six marks. Long branches wrap, repeating the team they
- * wrap on; short ones share a row. Teams with no link to the rest go on their own captioned row.
- */
-function branchRows(): Row[] {
-  const segments: Segment[] = [];
-  for (const b of branches) {
-    for (let i = 0; i < b.teams.length - 1; i += ROW_SLOTS - 1) {
-      segments.push({ teams: b.teams.slice(i, i + ROW_SLOTS), scores: b.results.slice(i, i + ROW_SLOTS - 1).map((r) => r.score) });
-    }
-  }
-  const rows: Row[] = [];
-  const width = (segs: Segment[]) => segs.reduce((w, sg) => w + sg.teams.length, 0) + (segs.length - 1) * GAP;
-  for (const sg of [...segments].sort((x, y) => y.teams.length - x.teams.length)) {
-    const fit = rows.find((r) => width([...r.segments, sg]) <= ROW_SLOTS);
-    if (fit) fit.segments.push(sg); else rows.push({ segments: [sg] });
-  }
-  for (let i = 0; i < unattached.length; i += ROW_SLOTS) {
-    rows.push({
-      segments: unattached.slice(i, i + ROW_SLOTS).map((t) => ({ teams: [t], scores: [] })),
-      caption: i === 0 ? 'NOT CONNECTED YET' : undefined,
-    });
-  }
-  return rows;
-}
-
-function arrowRight(ctx: SKRSContext2D, x1: number, x2: number, y: number, head: number) {
+function arrowTo(ctx: SKRSContext2D, x1: number, y1: number, x2: number, y2: number, head: number) {
+  const ux = (x2 - x1) / Math.hypot(x2 - x1, y2 - y1);
+  const uy = (y2 - y1) / Math.hypot(x2 - x1, y2 - y1);
   ctx.beginPath();
-  ctx.moveTo(x1, y);
-  ctx.lineTo(x2 - head, y);
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2 - ux * head, y2 - uy * head);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(x2, y);
-  ctx.lineTo(x2 - head * 1.6, y - head * 0.75);
-  ctx.lineTo(x2 - head * 1.6, y + head * 0.75);
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - ux * head * 1.6 - uy * head * 0.75, y2 - uy * head * 1.6 + ux * head * 0.75);
+  ctx.lineTo(x2 - ux * head * 1.6 + uy * head * 0.75, y2 - uy * head * 1.6 - ux * head * 0.75);
   ctx.closePath();
   ctx.fill();
 }
 
-/** Horizontal advance of a row in units of `step`: 1 between joined marks, 1 + GAP between segments. */
-const rowUnits = (row: Row) => row.segments.reduce((u, sg) => u + sg.teams.length - 1, 0) + (row.segments.length - 1) * (1 + GAP);
+/**
+ * The branch grows out of its ring team at (ax, ay): an arrow straight down to the first team off
+ * the ring, then the rest of the chain running right along `rowY`.
+ */
+function drawBranch(ctx: SKRSContext2D, W: number, ax: number, ay: number, anchorSize: number, rowY: number) {
+  const teams = branch!.teams;
+  const scores = branch!.results.map((r) => r.score);
+  const m = teams.length - 1;
+  const step = m > 1 ? Math.min(176, (W - 60 - ax - 44) / (m - 1)) : 0;
+  const sm = Math.min(84, step ? step * 0.56 : 84);
+  const label = Math.round(Math.max(26, sm * 0.42));
+  const xs = teams.slice(1).map((_, i) => ax + i * step);
+  ctx.strokeStyle = INK;
+  ctx.fillStyle = INK;
+  ctx.lineWidth = 4;
+  ctx.lineCap = 'round';
 
-function drawRow(ctx: SKRSContext2D, W: number, row: Row, cy: number, sm: number, step: number) {
-  const units = rowUnits(row);
-  let x = W / 2 - (step * units) / 2;
-  const y = row.caption ? cy + 12 : cy;
-  if (row.caption) {
-    font(ctx, 700, 20);
-    ctx.fillStyle = GRAY;
+  // The drop from the ring team.
+  const top = ay + markSize(teams[0], anchorSize).h / 2 + 12;
+  const bottom = rowY - markSize(teams[1], sm).h / 2 - 12;
+  arrowTo(ctx, ax, top, ax, bottom, 14);
+  font(ctx, 800, 40);
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(scores[0], ax - 18, (top + bottom) / 2);
+
+  // Along the row.
+  for (let i = 1; i < m; i++) {
+    const xa = xs[i - 1] + markSize(teams[i], sm).w / 2 + 12;
+    const xb = xs[i] - markSize(teams[i + 1], sm).w / 2 - 12;
+    arrowTo(ctx, xa, rowY, xb, rowY, 12);
+    font(ctx, 800, label);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'alphabetic';
-    ctx.fillText(row.caption, W / 2, y - sm / 2 - 10);
+    ctx.fillText(scores[i], (xa + xb) / 2, rowY - 14);
   }
-  const label = Math.round(Math.max(20, sm * 0.36));
-  row.segments.forEach((sg, k) => {
-    if (k > 0) x += step * (1 + GAP);
-    const xs = sg.teams.map((_, i) => x + i * step);
-    ctx.strokeStyle = INK;
-    ctx.fillStyle = INK;
-    ctx.lineWidth = Math.max(2.5, label / 9);
-    ctx.lineCap = 'round';
-    sg.scores.forEach((score, i) => {
-      const xa = xs[i] + markSize(sg.teams[i], sm).w / 2 + 12;
-      const xb = xs[i + 1] - markSize(sg.teams[i + 1], sm).w / 2 - 12;
-      arrowRight(ctx, xa, xb, y, label * 0.34);
-      font(ctx, 800, label);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillText(score, (xa + xb) / 2, y - 12);
-    });
-    sg.teams.forEach((t, i) => drawTeam(ctx, t, xs[i], y, sm));
-    x = xs[xs.length - 1];
-  });
+  teams.slice(1).forEach((t, i) => drawTeam(ctx, t, xs[i], rowY, sm));
+}
+
+/** Anyone on neither the ring nor the branch, as a small captioned row. */
+function drawRest(ctx: SKRSContext2D, W: number, y: number) {
+  const sm = 52;
+  const gap = 74;
+  font(ctx, 700, 22);
+  ctx.save();
+  ctx.letterSpacing = '2px';
+  const caption = 'THE REST';
+  const cw = ctx.measureText(caption).width + 28;
+  const total = cw + gap * (rest.length - 1) + sm;
+  let x = W / 2 - total / 2;
+  ctx.fillStyle = GRAY;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(caption, x, y);
+  ctx.restore();
+  x += cw + sm / 2;
+  rest.forEach((t, i) => drawTeam(ctx, t, x + i * gap, y, sm));
 }
 
 function watermark(ctx: SKRSContext2D, W: number, y: number) {
@@ -257,6 +263,15 @@ function noCircle(ctx: SKRSContext2D, cx: number, cy: number, maxW: number) {
   ctx.fillText('Every chain of wins still runs one way.', cx, cy + 180);
 }
 
+/** Canvas angle where the branch's ring team sits: lower left, so the branch can drop and run right. */
+const ANCHOR_ANGLE = (130 * Math.PI) / 180;
+
+/** Rotation that puts the branch's ring team at ANCHOR_ANGLE (or the leader at 12 o'clock). */
+function ringStart(): number {
+  if (!branch) return -Math.PI / 2;
+  return ANCHOR_ANGLE - ((2 * Math.PI) / n) * ring.indexOf(branch.teams[0]);
+}
+
 function post(): Buffer {
   const W = 1080;
   const H = 1350;
@@ -270,41 +285,23 @@ function post(): Buffer {
     return c.toBuffer('image/png');
   }
 
-  // The "off the circle" section grows upward from the watermark; the ring takes what's left.
-  const rows = branchRows();
-  const rowH = rows.length <= 1 ? 150 : Math.max(84, Math.min(118, 330 / rows.length));
-  const headingH = 56;
-  const divider = H - 80 - rows.length * rowH - headingH - 12;
-  const ringTop = 40;
-  const ringBottom = divider - 28;
-  const cy = (ringTop + ringBottom) / 2;
-  const R = Math.min(366, (ringBottom - ringTop) / 2 - 72);
-
-  const s = drawRing(ctx, W / 2, cy, R, 132, 40);
+  // With a branch the circle sits higher to leave room underneath; alone, it's centered.
+  const cx = W / 2;
+  const cy = branch ? 544 : rest.length ? 560 : 610;
+  const R = branch ? 360 : 380;
+  const start = ringStart();
+  const s = drawRing(ctx, cx, cy, R, 132, 40, start);
   const inner = 2 * (R - s / 2 - 24);
   ctx.fillStyle = INK;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
   font(ctx, 800, fit(ctx, LEAGUE.name, 800, 170, inner * 0.6));
-  ctx.fillText(LEAGUE.name, W / 2, cy - 4);
+  ctx.fillText(LEAGUE.name, cx, cy - 4);
   font(ctx, 800, fit(ctx, 'CIRCLE OF SUCK', 800, 88, inner * 0.92));
-  ctx.fillText('CIRCLE OF SUCK', W / 2, cy + 78);
+  ctx.fillText('CIRCLE OF SUCK', cx, cy + 78);
 
-  ctx.fillStyle = '#E5E5E5';
-  ctx.fillRect(80, divider, W - 160, 2);
-  ctx.fillStyle = GRAY;
-  ctx.textAlign = 'center';
-  font(ctx, 700, 28);
-  ctx.save();
-  ctx.letterSpacing = '3px';
-  ctx.fillText(rows.length ? 'OFF THE CIRCLE' : 'EVERY TEAM IS IN THE CIRCLE', W / 2, divider + 50);
-  ctx.restore();
-  // One spacing for every row, so arrows are the same length throughout.
-  const sm = Math.min(84, rowH * 0.6);
-  const widest = Math.max(1, ...rows.map(rowUnits));
-  const step = Math.min(rows.length > 1 ? 160 : 176, (W - 140 - sm) / widest);
-  rows.forEach((row, k) => drawRow(ctx, W, row, divider + headingH + 12 + rowH * (k + 0.5), sm, step));
-
+  if (branch) drawBranch(ctx, W, cx + R * Math.cos(ANCHOR_ANGLE), cy + R * Math.sin(ANCHOR_ANGLE), s, 1150);
+  if (rest.length) drawRest(ctx, W, branch ? 1250 : 1200);
   watermark(ctx, W, H - 34);
   return c.toBuffer('image/png');
 }
@@ -320,7 +317,7 @@ function preview(): Buffer {
     noCircle(ctx, W / 2, H / 2 - 20, 640);
     return c.toBuffer('image/png');
   }
-  drawRing(ctx, 862, 318, 214, 86, 27);
+  drawRing(ctx, 862, 318, 214, 86, 27, ringStart());
   ctx.fillStyle = INK;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -376,5 +373,5 @@ writeFileSync(new URL('../public/circle.png', import.meta.url), post());
 writeFileSync(new URL('../public/og.png', import.meta.url), preview());
 const withLogos = a.teams.filter((t) => logos.get(t)).length;
 console.log(n
-  ? `Rendered a ${n}-team circle, ${branches.length} branch(es), ${unattached.length} unattached, ${withLogos}/${a.teams.length} logos.`
+  ? `Rendered a ${n}-team circle${branch ? ` with a ${branch.teams.length - 1}-team branch off ${branch.teams[0]}` : ''}, ${rest.length} more, ${withLogos}/${a.teams.length} logos.`
   : 'No circle yet; rendered the "not yet" image.');

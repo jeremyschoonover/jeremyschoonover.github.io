@@ -4,7 +4,7 @@
  */
 import { teamInfo } from './data/teams';
 import { type Dataset, losePts, secGames, winPts } from './lib/data';
-import { type Analysis, analyze, branches, edgeKey } from './lib/graph';
+import { type Analysis, analyze, edgeKey, mainBranch } from './lib/graph';
 
 export const SITE = {
   name: 'Circle of Suck',
@@ -37,10 +37,10 @@ export interface Info {
   lastGame: string;
   /** The ring's results in order: ring[i] beat ring[i+1]. */
   results: Result[];
-  /** Chains of wins hanging off the ring; each starts at a team already shown. */
-  branches: { teams: string[]; results: Result[] }[];
-  /** Teams no chain of wins reaches yet (for example, unbeaten ones). */
-  unattached: string[];
+  /** The main branch: the longest chain of wins running off the ring, starting at a ring team. */
+  branch: { teams: string[]; results: Result[] } | null;
+  /** Teams on neither the ring nor the branch. */
+  rest: string[];
   sourceLine: string;
   alt: string;
 }
@@ -53,8 +53,10 @@ export function info(data: Dataset): Info {
     return { winner: w, loser: l, score: `${winPts(g)}-${losePts(g)}` };
   };
   const results = ring.map((t, i) => result(t, ring[(i + 1) % ring.length]));
-  const tree = ring.length ? branches(a.graph, ring) : { branches: [], unattached: [] };
-  const hanging = tree.branches.map((p) => ({ teams: p, results: p.slice(1).map((t, i) => result(p[i], t)) }));
+  const path = ring.length ? mainBranch(a.graph, ring) : [];
+  const branch = path.length ? { teams: path, results: path.slice(1).map((t, i) => result(path[i], t)) } : null;
+  const shown = new Set([...ring, ...path]);
+  const rest = a.standings.map((r) => r.team).filter((t) => !shown.has(t));
   const week = Math.max(0, ...a.games.map((g) => g.week));
   const lastGame = a.games.map((g) => g.date).sort().at(-1) ?? '';
   const sourceLine = data.source === 'compiled'
@@ -63,10 +65,10 @@ export function info(data: Dataset): Info {
   const said = (rs: Result[]) => rs.map((r) => `${r.winner} beat ${r.loser} ${r.score}`).join(', ');
   const alt = ring.length
     ? `${LEAGUE.name} circle of suck through Week ${week}: ${said(results)}.`
-      + hanging.map((b) => ` Off the circle: ${said(b.results)}.`).join('')
-      + (tree.unattached.length ? ` Not connected yet: ${tree.unattached.join(', ')}.` : '')
+      + (branch ? ` Branching off ${branch.teams[0]}: ${said(branch.results)}.` : '')
+      + (rest.length ? ` The rest: ${rest.join(', ')}.` : '')
     : `${LEAGUE.name} circle of suck: no circle yet.`;
-  return { a, week, lastGame, results, branches: hanging, unattached: tree.unattached, sourceLine, alt };
+  return { a, week, lastGame, results, branch, rest, sourceLine, alt };
 }
 
 /** Abbreviations for the teams on the ring and outside it, used for logo file names. */
