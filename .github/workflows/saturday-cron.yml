@@ -1,9 +1,9 @@
-name: SEC Parity Index - Saturday sync
+name: SEC Circle of Suck - Saturday sync
 
 # Every 10 minutes on Saturdays (UTC), plus the early-Sunday UTC hours that cover West Coast
-# kickoffs: pull finals from CollegeFootballData.com, recompute the longest cycle, SCCs and
-# shortest transitive paths, rebuild the app into sec-parity-index/, and commit. The commit
-# triggers the normal GitHub Pages build for this site.
+# kickoffs: pull finals from CollegeFootballData.com, recompute the circle, re-render the post
+# image, rebuild the app into sec-parity-index/, and commit. The commit triggers the normal
+# GitHub Pages build for this site.
 on:
   schedule:
     - cron: '*/10 * * * 6'
@@ -38,18 +38,20 @@ jobs:
         run: npm run sync
         env:
           CFBD_API_KEY: ${{ secrets.CFBD_API_KEY }}
+      - name: Download team logos (first run only; kept afterwards)
+        run: npm run logos
       - run: npm test
-      - name: Build into sec-parity-index/
+      - name: Render the post image and build into sec-parity-index/
         run: npm run publish
       - name: Commit data and build
         working-directory: .
         run: |
-          git add _sec-parity-index/data sec-parity-index
+          git add _sec-parity-index/data _sec-parity-index/public sec-parity-index
           if git diff --cached --quiet; then
             echo "No changes."
             exit 0
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "SEC Parity Index: sync $(date -u +%Y-%m-%dT%H:%MZ)"
+          git commit -m "Circle of Suck: sync $(date -u +%Y-%m-%dT%H:%MZ)"
           git push
